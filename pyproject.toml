@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "koe"
+version = "0.1.0"
+description = "Free, offline, privacy-first voice-to-text for Windows"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+keywords = ["voice", "speech-to-text", "whisper", "dictation", "offline"]
+
+dependencies = [
+    "faster-whisper>=1.0.0",
+    "sounddevice>=0.4.6",
+    "numpy>=1.24.0",
+    "pystray>=0.19.0",
+    "pywebview>=5.4",
+    "Pillow>=10.0.0",
+    "keyboard>=0.13.5",
+    "pyperclip>=1.8.2",
+    "pywin32>=306",
+    "tomli>=2.0.0;python_version<'3.11'",
+    "tomli-w>=1.0.0",
+]
+
+[project.optional-dependencies]
+llm = [
+    "llama-cpp-python>=0.2.0",
+]
+dev = [
+    "pytest>=7.0",
+    "ruff>=0.1.0",
+]
+
+[project.scripts]
+koe-cli = "koe.__main__:main"
+
+[project.gui-scripts]
+koe = "koe.__main__:main"
+koe-gui = "koe.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["koe*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W"]

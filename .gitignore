@@ -1,0 +1,52 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+*.whl
+*.log
+*.png
+*.wav
+*.txt
+
+# Virtual environments
+venv/
+.venv/
+env/
+.uv-cache/
+.uv-python/
+.pip-cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Koe data (don't commit user configs or models)
+.koe/
+
+# Test
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local app/runtime junk
+.chrome-headless/
+.design-export/
+.tmp/
+.tmp_pytest/
+pytest-cache-files-*/
+overlay_frames/
+preview/
+video-frames/
+tcl8.6.12/
+tk8.6/
+vendor_tcl/

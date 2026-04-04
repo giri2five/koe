@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Koe Desktop</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="noise-layer"></div>
+
+  <main class="desktop-shell">
+    <section class="app-window">
+      <header class="app-header">
+        <div class="brand-lockup">
+          <div class="brand-mark" aria-hidden="true">
+            <span></span>
+            <span></span>
+          </div>
+          <div class="brand-copy">
+            <p class="brand-name">Koe</p>
+            <h1>Voice writing for any text field</h1>
+          </div>
+        </div>
+
+        <div class="header-actions">
+          <span class="meta-pill" id="status-pill">Ready</span>
+          <span class="meta-pill" id="hotkey-pill">ALT&nbsp;+&nbsp;K</span>
+          <button class="primary-button" id="capture-button">Hide to tray</button>
+        </div>
+      </header>
+
+      <section class="app-body">
+        <section class="main-column">
+          <article class="panel capture-panel" id="hero-panel" data-state="idle">
+            <div class="capture-copy">
+              <p class="eyebrow" id="hero-kicker">Ready</p>
+              <h2 id="hero-title">Press Alt + K to start dictation.</h2>
+              <p class="capture-body" id="hero-body">Speak, release, and Koe writes into the active app while keeping the same text copied.</p>
+              <div class="capture-meta">
+                <span class="status-pill" id="hero-pill">Idle</span>
+                <span class="status-ghost" id="engine-pill">On-device</span>
+              </div>
+            </div>
+
+            <div class="capture-object" aria-hidden="true">
+              <div class="capture-core"></div>
+              <div class="capture-bars" id="hero-bars">
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+            </div>
+          </article>
+
+          <div class="grid-row">
+            <article class="panel info-panel">
+              <p class="eyebrow">Current flow</p>
+              <h3 id="summary-title">Simple capture flow.</h3>
+              <div class="draft-surface" id="draft-surface">
+                <div class="draft-index">01</div>
+                <p class="draft-line">Open any text field.</p>
+                <p class="draft-line">Hold Alt + K, speak, release.</p>
+                <p class="draft-line">Koe writes into the app and keeps the same text copied.</p>
+              </div>
+            </article>
+
+            <article class="panel info-panel">
+              <p class="eyebrow">Last result</p>
+              <h3 id="result-title">What Koe last heard.</h3>
+              <div class="result-stack">
+                <div class="result-block">
+                  <span class="result-label">Transcribed</span>
+                  <p class="result-text" id="last-transcript">Nothing captured yet.</p>
+                </div>
+                <div class="result-block">
+                  <span class="result-label">Cleaned output</span>
+                  <p class="result-text" id="last-cleaned">Nothing delivered yet.</p>
+                </div>
+                <div class="result-meta">
+                  <span class="status-ghost" id="last-delivery">No delivery yet</span>
+                  <span class="status-ghost" id="last-duration">0.00s</span>
+                </div>
+                <div class="result-actions">
+                  <button class="secondary-button" id="copy-result-button">Copy result</button>
+                  <button class="ghost-button" id="clear-result-button">Clear</button>
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <aside class="side-column">
+          <article class="panel settings-panel">
+            <p class="eyebrow">Live setup</p>
+            <h3>Working controls</h3>
+
+            <button class="setting-row" id="microphone-setting">
+              <div>
+                <span class="setting-label">Microphone</span>
+                <strong id="microphone-value">Headset (JBL Tune 520BT)</strong>
+              </div>
+              <span class="caret">v</span>
+            </button>
+
+            <button class="setting-row" id="output-setting">
+              <div>
+                <span class="setting-label">Output</span>
+                <strong id="output-value">Write into app and keep copied</strong>
+              </div>
+              <span class="caret">v</span>
+            </button>
+
+            <div class="toggle-stack">
+              <button class="toggle-row" id="overlay-setting">
+                <div>
+                  <strong>Live overlay</strong>
+                  <span>Show the capture capsule while speaking</span>
+                </div>
+                <div class="switch is-on" id="overlay-switch"><span></span></div>
+              </button>
+
+              <button class="toggle-row" id="sound-setting">
+                <div>
+                  <strong>Sound cues</strong>
+                  <span>Play a soft start and stop cue</span>
+                </div>
+                <div class="switch is-on" id="sound-switch"><span></span></div>
+              </button>
+            </div>
+
+            <div class="note-box">
+              <p id="inspector-note">This window should stay simple: one hotkey, a few working controls, and no fake UI.</p>
+            </div>
+          </article>
+        </aside>
+      </section>
+    </section>
+  </main>
+
+  <div class="option-sheet is-hidden" id="option-sheet" aria-hidden="true">
+    <div class="option-sheet-backdrop" id="option-backdrop"></div>
+    <div class="option-sheet-panel">
+      <div class="option-sheet-head">
+        <p class="eyebrow">Select</p>
+        <h3 id="sheet-title">Choose an option</h3>
+      </div>
+      <div class="option-list" id="option-list"></div>
+    </div>
+  </div>
+
+  <script src="./script.js"></script>
+</body>
+</html>
