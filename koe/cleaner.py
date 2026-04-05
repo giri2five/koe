@@ -16,6 +16,7 @@ import re
 from typing import Optional
 
 from koe.config import CleanupConfig
+from koe.context import FormattingProfile
 from koe.dictionary import PersonalDictionary
 
 logger = logging.getLogger(__name__)
@@ -73,14 +74,26 @@ class TextCleaner:
             return self._clean_with_llm(text)
         return self._clean_with_rules(text)
 
-    def _clean_with_rules(self, text: str) -> str:
+    def clean_with_context(self, text: str, exe: str | None, title: str | None) -> str:
+        """Clean text applying context-aware formatting based on active app."""
+        if not self.config.enabled or not text:
+            return text
+        if self.config.mode == "llm":
+            return self._clean_with_llm(text)
+        from koe.context import detect_profile
+        profile = detect_profile(exe, title)
+        import logging as _lg
+        _lg.getLogger(__name__).debug("Context profile: %s (exe=%s)", profile.label, exe)
+        return self._clean_with_rules(text, profile)
+
+    def _clean_with_rules(self, text: str, profile: "FormattingProfile | None" = None) -> str:
         """Rule-based text cleanup. Fast, no model needed."""
         original = text
 
         text = self._apply_spoken_punctuation(text)
 
         # Step 1: Remove filler words
-        if self.config.remove_fillers:
+        if self.config.remove_fillers and (profile is None or profile.remove_fillers):
             text = FILLER_REGEX.sub("", text)
 
         # Step 2: Clean up whitespace and punctuation artifacts
@@ -93,7 +106,8 @@ class TextCleaner:
         text = text.strip()
 
         # Step 3: Fix capitalization
-        if self.config.fix_punctuation:
+        do_capitalize = self.config.fix_punctuation and (profile is None or profile.capitalize)
+        if do_capitalize:
             # Capitalize first letter
             if text and text[0].islower():
                 text = text[0].upper() + text[1:]
@@ -106,7 +120,8 @@ class TextCleaner:
             )
 
         # Step 4: Ensure ending punctuation
-        if self.config.fix_punctuation:
+        do_punctuate = self.config.fix_punctuation and (profile is None or profile.add_punctuation)
+        if do_punctuate:
             if text and text[-1] not in ".!?":
                 # Add period unless it looks like an exclamation or question
                 if any(text.lower().startswith(w) for w in [

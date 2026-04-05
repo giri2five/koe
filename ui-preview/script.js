@@ -11,12 +11,16 @@ let appState = {
   outputMode: "both",
   showOverlay: true,
   soundFeedback: true,
+  clipboardToggle: "",
+  cleanupMode: "rules",
+  cleanupEnabled: true,
   lastTranscript: "",
   lastCleaned: "",
   lastDelivery: "",
   lastDuration: "",
   model: "small.en",
   history: [],
+  snippetCount: 0,
 };
 
 // ── Element refs ───────────────────────────────────────────────────────────
@@ -29,7 +33,10 @@ const micValue     = document.getElementById("mic-value");
 const outputValue  = document.getElementById("output-value");
 const overlaySwitch = document.getElementById("overlay-switch");
 const soundSwitch  = document.getElementById("sound-switch");
+const clipboardToggleValue = document.getElementById("clipboard-toggle-value");
+const cleanupModeSwitch = document.getElementById("cleanup-mode-switch");
 const modelValue   = document.getElementById("model-value");
+const snippetCount = document.getElementById("snippet-count");
 const lastCleaned  = document.getElementById("last-cleaned");
 const lastDelivery = document.getElementById("last-delivery");
 const lastDuration = document.getElementById("last-duration");
@@ -68,9 +75,15 @@ function applyState(incoming) {
   micValue.textContent    = appState.microphoneLabel || "System default";
   outputValue.textContent = appState.outputModeLabel || "Type and copy";
   modelValue.textContent  = appState.model || "small.en";
+  if (snippetCount) snippetCount.textContent = appState.snippetCount ?? 0;
 
   overlaySwitch.classList.toggle("on", Boolean(appState.showOverlay));
   soundSwitch.classList.toggle("on",   Boolean(appState.soundFeedback));
+
+  clipboardToggleValue.textContent = appState.clipboardToggle
+    ? appState.clipboardToggle.toUpperCase().replace(/\+/g, " + ")
+    : "Disabled";
+  cleanupModeSwitch.classList.toggle("on", appState.cleanupMode === "llm");
 
   const cleaned = appState.lastCleaned || "";
   lastCleaned.textContent = cleaned || "Hold Alt\u00a0+\u00a0K and speak \u2014 your text appears here.";
@@ -192,6 +205,26 @@ document.getElementById("overlay-toggle").addEventListener("click", async () => 
 document.getElementById("sound-toggle").addEventListener("click", async () => {
   if (!hasApi()) return;
   applyState(await window.pywebview.api.set_sound_enabled(!appState.soundFeedback));
+});
+
+const CLIPBOARD_TOGGLE_OPTIONS = [
+  { value: "", label: "Disabled" },
+  { value: "ctrl+shift+space", label: "Ctrl + Shift + Space" },
+  { value: "ctrl+shift+v", label: "Ctrl + Shift + V" },
+  { value: "ctrl+alt+space", label: "Ctrl + Alt + Space" },
+];
+
+document.getElementById("clipboard-toggle-setting").addEventListener("click", () => {
+  openSheet("Clipboard toggle hotkey", CLIPBOARD_TOGGLE_OPTIONS, appState.clipboardToggle || "", async val => {
+    if (!hasApi()) return;
+    applyState(await window.pywebview.api.set_clipboard_toggle(val));
+  });
+});
+
+document.getElementById("cleanup-mode-toggle").addEventListener("click", async () => {
+  if (!hasApi()) return;
+  const next = appState.cleanupMode === "llm" ? "rules" : "llm";
+  applyState(await window.pywebview.api.set_cleanup_mode(next));
 });
 
 document.getElementById("copy-result-btn").addEventListener("click", async () => {

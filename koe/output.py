@@ -45,6 +45,8 @@ class WindowTarget:
 
     hwnd: int
     pid: int | None = None
+    exe: str | None = None    # basename of the process image (e.g. "chrome.exe")
+    title: str | None = None  # window title at capture time
 
 
 class OutputEngine:
@@ -63,15 +65,47 @@ class OutputEngine:
         """Return the current foreground window handle and process id."""
         try:
             import ctypes
+            import os as _os
 
             user32 = ctypes.windll.user32
+            kernel32 = ctypes.windll.kernel32
             hwnd = int(user32.GetForegroundWindow())
             if not hwnd:
                 return None
 
             pid = ctypes.c_ulong()
             user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-            return WindowTarget(hwnd=hwnd, pid=int(pid.value) or None)
+            pid_val = int(pid.value) or None
+
+            # Resolve exe basename
+            exe: str | None = None
+            if pid_val:
+                try:
+                    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+                    handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid_val)
+                    if handle:
+                        try:
+                            size = ctypes.c_ulong(1024)
+                            buf = ctypes.create_unicode_buffer(size.value)
+                            if kernel32.QueryFullProcessImageNameW(handle, 0, buf, ctypes.byref(size)):
+                                exe = _os.path.basename(buf.value)
+                        finally:
+                            kernel32.CloseHandle(handle)
+                except Exception:
+                    pass
+
+            # Resolve window title
+            title: str | None = None
+            try:
+                length = user32.GetWindowTextLengthW(hwnd)
+                if length > 0:
+                    tbuf = ctypes.create_unicode_buffer(length + 1)
+                    user32.GetWindowTextW(hwnd, tbuf, length + 1)
+                    title = tbuf.value or None
+            except Exception:
+                pass
+
+            return WindowTarget(hwnd=hwnd, pid=pid_val, exe=exe, title=title)
         except Exception:
             return None
 

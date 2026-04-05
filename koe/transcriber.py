@@ -299,6 +299,20 @@ class Transcriber:
             return min(configured, 3)
         return configured
 
+    def transcribe_file(self, path: str) -> str:
+        """Transcribe an audio file from disk. Returns cleaned text."""
+        self._ensure_model()
+        segments, info = self._model.transcribe(
+            path,
+            language=self.config.language if self.config.language != "auto" else None,
+            beam_size=self.config.beam_size,
+            vad_filter=True,
+            word_timestamps=False,
+        )
+        text = " ".join(seg.text.strip() for seg in segments).strip()
+        logger.info("File transcription: %.1fs → %d chars", info.duration, len(text))
+        return text
+
     def unload(self):
         """Unload model to free GPU memory."""
         if self._model is not None:

@@ -88,9 +88,65 @@ def _hide_stray_launcher_windows():
 
     threading.Thread(target=worker, daemon=True, name="koe-hide-launcher").start()
 
+def _run_file_transcription(path: str, model: str | None = None, skip_clean: bool = False) -> None:
+    """Transcribe an audio or video file and print cleaned text to stdout."""
+    from pathlib import Path as _Path
+    import sys as _sys
+
+    src = _Path(path)
+    if not src.exists():
+        print(f"koe: file not found: {path}", file=_sys.stderr)
+        _sys.exit(1)
+
+    # Minimal logging — only errors to stderr
+    import logging as _logging
+    _logging.basicConfig(level=_logging.ERROR, format="%(message)s")
+
+    from koe.config import load_config
+    from koe.transcriber import Transcriber
+    from koe.cleaner import TextCleaner
+
+    config = load_config()
+    if model:
+        config.transcription.model = model
+
+    print(f"Loading model '{config.transcription.model}'…", file=_sys.stderr)
+    transcriber = Transcriber(config.transcription)
+
+    print(f"Transcribing {src.name}…", file=_sys.stderr)
+    try:
+        # faster-whisper accepts file paths directly
+        text = transcriber.transcribe_file(str(src))
+    except Exception as exc:
+        print(f"koe: transcription failed: {exc}", file=_sys.stderr)
+        _sys.exit(1)
+
+    if not text:
+        print("koe: no speech detected", file=_sys.stderr)
+        _sys.exit(0)
+
+    if not skip_clean:
+        cleaner = TextCleaner(config.cleanup)
+        text = cleaner.clean(text)
+
+    print(text)
+    transcriber.unload()
+
+
 def main():
     os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
     os.chdir(Path(__file__).resolve().parents[1])
+
+    import argparse
+    parser = argparse.ArgumentParser(prog="koe", add_help=True)
+    parser.add_argument("--file", metavar="PATH", help="Transcribe an audio file and print the result")
+    parser.add_argument("--model", default=None, metavar="MODEL", help="Whisper model to use (default: from config)")
+    parser.add_argument("--no-clean", action="store_true", help="Skip text cleanup")
+    args, _ = parser.parse_known_args()
+
+    if args.file:
+        _run_file_transcription(args.file, model=args.model, skip_clean=args.no_clean)
+        return
 
     if not _acquire_single_instance():
         return

@@ -20,6 +20,7 @@ from koe.hotkey import HotkeyListener
 from koe.output import OutputEngine, OutputMode, WindowTarget
 from koe.overlay import Overlay, OverlayState
 from koe.settings_window import SettingsWindow
+from koe.snippets import SnippetStore
 from koe.transcriber import Transcriber
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,7 @@ class KoeApp:
         self.recorder = AudioRecorder(self.config.audio)
         self.transcriber = Transcriber(self.config.transcription)
         self.cleaner = TextCleaner(self.config.cleanup)
+        self.snippets = SnippetStore()
         self.output = OutputEngine(self.config.output)
         sounds.set_output_device(self.config.audio.output_device)
 
@@ -181,7 +183,32 @@ class KoeApp:
                 return
 
             self._last_transcript = text
-            text = self.cleaner.clean(text)
+
+            # Check for snippet match before cleanup
+            snippet_expansion = self.snippets.match(text)
+            if snippet_expansion is not None:
+                logger.info("Snippet matched: %r → %r", text, snippet_expansion[:40])
+                text = snippet_expansion
+                self._last_cleaned = text
+                # Deliver directly — skip cleanup
+                delivery = self.output.deliver(text, self._target_window)
+                if self.config.ui.sound_feedback and delivery.delivered:
+                    sounds.play_deliver()
+                if delivery.delivered:
+                    self._set_status("Written and copied" if delivery.copied else "Typed")
+                    self._last_delivery = "Snippet expanded"
+                    from datetime import datetime as _dt
+                    self._history.append({"text": text, "time": _dt.now().strftime("%H:%M")})
+                    if len(self._history) > 20:
+                        self._history = self._history[-20:]
+                else:
+                    self._set_status("Write failed")
+                    self._last_delivery = "Write failed"
+                return
+
+            exe   = self._target_window.exe   if self._target_window else None
+            title = self._target_window.title if self._target_window else None
+            text  = self.cleaner.clean_with_context(text, exe, title)
             if not text:
                 self._last_cleaned = ""
                 self._last_delivery = "Nothing to send"
@@ -349,6 +376,8 @@ class KoeApp:
             "lastDelivery": self._last_delivery,
             "lastDuration": self._last_duration,
             "history": list(self._history),
+            "snippetCount": self.snippets.count(),
+            "snippetsPath": str(self.snippets.path),
         }
 
     def _copy_last_result(self) -> dict:

@@ -147,8 +147,13 @@ class Overlay:
         self._state:        OverlayState = OverlayState.HIDDEN
         self._target_state: OverlayState = OverlayState.HIDDEN
 
-        self._hide_y = float(-(_WIN_H + 40))
-        self._rest_y = float(_TOP_Y)
+        sh = ctypes.windll.user32.GetSystemMetrics(1)
+        if self._position.startswith("bottom"):
+            self._hide_y = float(sh + _WIN_H + 40)
+            self._rest_y = float(sh - _WIN_H - 10)
+        else:
+            self._hide_y = float(-(_WIN_H + 40))
+            self._rest_y = float(_TOP_Y)
         self._y_pos  = self._hide_y
         self._y_vel  = 0.0
 
@@ -187,6 +192,14 @@ class Overlay:
         g = (_BAR_TOP_RGB[1] * (1-t) + _BAR_BOT_RGB[1] * t).astype(np.uint8)
         b = (_BAR_TOP_RGB[2] * (1-t) + _BAR_BOT_RGB[2] * t).astype(np.uint8)
         return r, g, b
+
+    def _compute_x(self, sw: int) -> int:
+        """Return the window X position based on the position string."""
+        if self._position in ("top-left", "bottom-left"):
+            return 20
+        if self._position in ("top-right", "bottom-right"):
+            return sw - _WIN_W - 20
+        return (sw - _WIN_W) // 2
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -250,7 +263,7 @@ class Overlay:
             _WS_EX_LAYERED | _WS_EX_TRANSPARENT | _WS_EX_TOOLWINDOW
             | _WS_EX_NOACTIVATE | _WS_EX_TOPMOST,
             self._cls_name, "KoeOverlay", _WS_POPUP,
-            (sw - _WIN_W) // 2, int(self._y_pos), _WIN_W, _WIN_H,
+            self._compute_x(sw), int(self._y_pos), _WIN_W, _WIN_H,
             0, 0, hinst, 0,
         )
         if not hwnd:
@@ -319,10 +332,15 @@ class Overlay:
         target      = self._rest_y if visible else self._hide_y
         self._y_vel = self._y_vel * _SPRING_DAMP + (target - self._y_pos) * _SPRING_K
         self._y_pos += self._y_vel
-        if visible:
+        if visible and self._position.startswith("bottom"):
+            self._y_pos = max(self._y_pos, self._rest_y - 8)
+        elif visible:
             self._y_pos = min(self._y_pos, self._rest_y + 8)
 
-        fully_hidden = self._y_pos < (self._hide_y + 5)
+        if self._position.startswith("bottom"):
+            fully_hidden = self._y_pos > (self._hide_y - 5)
+        else:
+            fully_hidden = self._y_pos < (self._hide_y + 5)
         u32 = ctypes.windll.user32
         if fully_hidden:
             if self._win_visible:
@@ -335,7 +353,7 @@ class Overlay:
             sw = u32.GetSystemMetrics(0)
             u32.SetWindowPos(
                 self._hwnd, 0,
-                (sw - _WIN_W) // 2, max(-_WIN_H, int(self._y_pos)),
+                self._compute_x(sw), max(-_WIN_H, int(self._y_pos)),
                 0, 0, 0x0001 | 0x0004 | 0x0010,
             )
 
@@ -476,7 +494,7 @@ class Overlay:
         ctypes.memmove(self._bits_ptr, bgra.tobytes(), bgra.nbytes)
 
         sw     = u32.GetSystemMetrics(0)
-        x      = (sw - _WIN_W) // 2
+        x      = self._compute_x(sw)
         y      = max(-_WIN_H, int(self._y_pos))
         pt_dst = _POINT(x, y)
         pt_src = _POINT(0, 0)

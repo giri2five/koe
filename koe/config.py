@@ -55,8 +55,6 @@ class CleanupConfig:
     mode: str = "rules"  # "rules" or "llm"
     remove_fillers: bool = True
     fix_punctuation: bool = True
-    fix_grammar: bool = True
-    preserve_style: bool = True
 
 
 @dataclass
