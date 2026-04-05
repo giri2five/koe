@@ -29,18 +29,27 @@ FILLER_PATTERNS = [
     r"\beh+\b",
     r"\bhmm+\b",
     r"\bhuh\b",
-    r"\blike\b(?=\s*,)",  # "like," as filler (before comma)
+    r"\blike\b(?=\s*,)",        # "like," as filler (before comma)
     r"\byou know\b",
+    r"\byou know what I mean\b",
+    r"\bif that makes sense\b",
+    r"\bif you know what I mean\b",
     r"\bI mean\b",
     r"\bbasically\b",
-    r"\bactually\b(?=\s*,)",  # "actually," as filler
-    r"\bliterally\b(?=\s*,)",  # "literally," as filler
-    r"^\s*so+\b(?:\s*,)?",  # leading "so" filler
-    r"\bright\b(?=\s*,)",  # "right," as filler
+    r"\bactually\b(?=\s*,)",    # "actually," as filler
+    r"\bliterally\b(?=\s*,)",   # "literally," as filler
+    r"^\s*so+\b(?:\s*,)?",      # leading "so" filler
+    r"\bright\b(?=\s*,)",       # "right," as filler
     r"\bokay so\b",
     r"\byeah so\b",
     r"\bkind of\b",
     r"\bsort of\b",
+    r"\bor something\b",
+    r"\bor whatever\b",
+    r"\bor something like that\b",
+    r"\banyway\b(?=\s*,)",      # "anyway," as filler
+    r"\bso yeah\b",
+    r"\byeah\b(?=\s*,)",        # "yeah," as filler
 ]
 
 # Compile into a single pattern
@@ -91,6 +100,9 @@ class TextCleaner:
         original = text
 
         text = self._apply_spoken_punctuation(text)
+
+        # Step 0: Remove word-level repetitions ("the the" → "the")
+        text = re.sub(r'\b(\w+)(\s+\1)+\b', r'\1', text, flags=re.IGNORECASE)
 
         # Step 1: Remove filler words
         if self.config.remove_fillers and (profile is None or profile.remove_fillers):
@@ -152,6 +164,12 @@ class TextCleaner:
             (r"\bexclamation mark\b", "!"),
             (r"\bnew line\b", "\n"),
             (r"\bnext line\b", "\n"),
+            (r"\bnew paragraph\b", "\n\n"),
+            (r"\bopen quote\b", "\u201c"),
+            (r"\bclose quote\b", "\u201d"),
+            (r"\bdash\b", "\u2014"),
+            (r"\bcolon\b", ":"),
+            (r"\bsemicolon\b", ";"),
         ]
 
         for pattern, replacement in replacements:

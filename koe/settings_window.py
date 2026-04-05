@@ -72,9 +72,25 @@ class _SettingsBridge:
         """Copy arbitrary text to clipboard (used by history entries)."""
         return self._owner.copy_text(text)
 
-    def set_cleanup_mode(self, value: str) -> dict:
-        """Set the cleanup mode (rules or llm)."""
-        return self._owner.set_cleanup_mode(value)
+    def get_snippets_data(self) -> dict:
+        """Return current snippets + suggestions for the Snippets page."""
+        return self._owner.get_snippets_data()
+
+    def add_snippet(self, trigger: str, expansion: str) -> dict:
+        """Add or update a snippet."""
+        return self._owner.add_snippet(trigger, expansion)
+
+    def delete_snippet(self, trigger: str) -> dict:
+        """Delete a snippet by trigger."""
+        return self._owner.delete_snippet(trigger)
+
+    def open_file_dialog(self) -> dict:
+        """Open a native audio file picker. Returns {path, filename}."""
+        return self._owner.open_file_dialog()
+
+    def transcribe_file(self, path: str) -> dict:
+        """Transcribe an audio file at the given path."""
+        return self._owner.transcribe_file(path)
 
 
 class SettingsWindow:
@@ -88,6 +104,10 @@ class SettingsWindow:
         on_clear_last_result: Callable[[], dict],
         on_quit: Callable[[], None] | None = None,
         on_clear_history: Callable[[], dict] | None = None,
+        on_get_snippets_data: Callable[[], dict] | None = None,
+        on_add_snippet: Callable[[str, str], dict] | None = None,
+        on_delete_snippet: Callable[[str], dict] | None = None,
+        on_transcribe_file: Callable[[str], dict] | None = None,
     ):
         self._on_save = on_save
         self._get_runtime_state = get_runtime_state
@@ -95,6 +115,10 @@ class SettingsWindow:
         self._on_clear_last_result = on_clear_last_result
         self._on_quit = on_quit
         self._on_clear_history = on_clear_history
+        self._on_get_snippets_data = on_get_snippets_data
+        self._on_add_snippet = on_add_snippet
+        self._on_delete_snippet = on_delete_snippet
+        self._on_transcribe_file = on_transcribe_file
 
         self._lock = threading.RLock()
         self._window: webview.Window | None = None
@@ -277,8 +301,6 @@ class SettingsWindow:
             "outputOptions": output_options,
             "showOverlay": config.ui.show_overlay,
             "soundFeedback": config.ui.sound_feedback,
-            "cleanupMode": config.cleanup.mode,
-            "cleanupEnabled": config.cleanup.enabled,
             "lastTranscript": str(runtime.get("lastTranscript", "")),
             "lastCleaned": str(runtime.get("lastCleaned", "")),
             "lastDelivery": str(runtime.get("lastDelivery", "")),
@@ -311,12 +333,51 @@ class SettingsWindow:
         self._mutate_config(lambda config: setattr(config.ui, "sound_feedback", bool(enabled)))
         return self.get_state()
 
-    def set_cleanup_mode(self, value: str) -> dict:
-        """Persist the cleanup mode (rules or llm)."""
-        if value not in ("rules", "llm"):
-            return self.get_state()
-        self._mutate_config(lambda config: setattr(config.cleanup, "mode", value))
-        return self.get_state()
+    def get_snippets_data(self) -> dict:
+        """Return snippets + suggestions for the Snippets page."""
+        if self._on_get_snippets_data:
+            return self._on_get_snippets_data()
+        return {"snippets": [], "suggestions": []}
+
+    def add_snippet(self, trigger: str, expansion: str) -> dict:
+        """Add or update a snippet and return updated data."""
+        if self._on_add_snippet:
+            return self._on_add_snippet(trigger, expansion)
+        return self.get_snippets_data()
+
+    def delete_snippet(self, trigger: str) -> dict:
+        """Delete a snippet and return updated data."""
+        if self._on_delete_snippet:
+            return self._on_delete_snippet(trigger)
+        return self.get_snippets_data()
+
+    def open_file_dialog(self) -> dict:
+        """Open a native audio file picker and return {path, filename}."""
+        if self._window is None:
+            return {"path": "", "filename": ""}
+        try:
+            import webview
+            result = self._window.create_file_dialog(
+                webview.OPEN_DIALOG,
+                allow_multiple=False,
+                file_types=("Audio files (*.mp3;*.wav;*.m4a;*.flac;*.ogg;*.aac;*.wma)",
+                            "All files (*.*)"),
+            )
+            if result and result[0]:
+                path = str(result[0])
+                from pathlib import Path as _P
+                return {"path": path, "filename": _P(path).name}
+        except Exception:
+            logger.exception("File dialog failed")
+        return {"path": "", "filename": ""}
+
+    def transcribe_file(self, path: str) -> dict:
+        """Transcribe an audio file. Runs synchronously on the bridge thread."""
+        if not path:
+            return {"error": "No file selected"}
+        if self._on_transcribe_file:
+            return self._on_transcribe_file(path)
+        return {"error": "Transcription not available"}
 
     def _mutate_config(self, mutation: Callable[[KoeConfig], None]):
         with self._lock:

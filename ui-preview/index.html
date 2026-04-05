@@ -29,6 +29,37 @@
         </div>
       </div>
 
+      <!-- Navigation -->
+      <div class="sidebar-nav">
+        <button class="nav-link active" data-page="dashboard">
+          <svg viewBox="0 0 16 16" fill="none" class="nav-icon">
+            <rect x="1" y="1" width="6" height="6" rx="1.5" fill="currentColor" opacity=".7"/>
+            <rect x="9" y="1" width="6" height="6" rx="1.5" fill="currentColor" opacity=".7"/>
+            <rect x="1" y="9" width="6" height="6" rx="1.5" fill="currentColor" opacity=".7"/>
+            <rect x="9" y="9" width="6" height="6" rx="1.5" fill="currentColor" opacity=".7"/>
+          </svg>
+          Dashboard
+        </button>
+        <button class="nav-link" data-page="snippets">
+          <svg viewBox="0 0 16 16" fill="none" class="nav-icon">
+            <path d="M2 4h12M2 8h8M2 12h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            <circle cx="13" cy="12" r="2.5" fill="currentColor" opacity=".8"/>
+            <path d="M12.3 12l.7.7 1.2-1.2" stroke="var(--bg)" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          Snippets
+          <span class="nav-badge" id="snippet-nav-badge" style="display:none">0</span>
+        </button>
+        <button class="nav-link" data-page="transcribe">
+          <svg viewBox="0 0 16 16" fill="none" class="nav-icon">
+            <rect x="2" y="1" width="10" height="13" rx="1.5" stroke="currentColor" stroke-width="1.3"/>
+            <path d="M4.5 5h7M4.5 8h5M4.5 11h3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+            <circle cx="13" cy="12" r="2.5" fill="currentColor" opacity=".8"/>
+            <path d="M12 12l.8.8 1.4-1.6" stroke="var(--bg)" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          Transcribe
+        </button>
+      </div>
+
       <div class="sidebar-section">
         <p class="sidebar-section-label">Input / Output</p>
 
@@ -61,21 +92,12 @@
           <span class="sidebar-row-label">Sound cues</span>
           <div class="switch" id="sound-switch"><span></span></div>
         </button>
-
-        <button class="sidebar-toggle" id="cleanup-mode-toggle">
-          <span class="sidebar-row-label">Smart cleanup</span>
-          <div class="switch" id="cleanup-mode-switch"><span></span></div>
-        </button>
       </div>
 
       <div class="sidebar-meta">
         <div class="meta-pair"><span>Model</span><span id="model-value">small.en</span></div>
         <div class="meta-pair"><span>Runtime</span><span>On-device · Private</span></div>
         <div class="meta-pair"><span>Hotkey</span><span id="hotkey-pill">ALT + K</span></div>
-        <div class="meta-pair">
-          <span>Snippets</span>
-          <span id="snippet-count">0</span>
-        </div>
       </div>
 
       <div class="sidebar-actions">
@@ -87,44 +109,144 @@
     <!-- ── Main ─────────────────────────────────────────────────────────── -->
     <main class="main">
 
-      <!-- Status hero -->
-      <div class="status-hero" id="status-card" data-state="idle">
-        <div class="status-vis" aria-hidden="true">
-          <span></span><span></span><span></span>
-          <span></span><span></span><span></span><span></span>
-        </div>
-        <div>
-          <p class="status-headline" id="status-label">Ready</p>
-          <p class="status-hint" id="status-sub">Hold Alt + K to speak</p>
-        </div>
-        <span class="status-badge" id="state-badge">Idle</span>
-      </div>
+      <!-- ── Page: Dashboard ────────────────────────────────────────────── -->
+      <div class="page active" id="page-dashboard">
 
-      <!-- Last result -->
-      <div class="panel" id="result-panel">
-        <div class="panel-head">
-          <span class="panel-label">Last result</span>
-          <div class="panel-actions">
-            <button class="btn-ghost" id="copy-result-btn">Copy</button>
-            <button class="btn-ghost" id="clear-result-btn">Clear</button>
+        <!-- Status hero -->
+        <div class="status-hero" id="status-card" data-state="idle">
+          <div class="status-vis" aria-hidden="true">
+            <span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span>
+          </div>
+          <div>
+            <p class="status-headline" id="status-label">Ready</p>
+            <p class="status-hint" id="status-sub">Hold Alt + K to speak</p>
+          </div>
+          <span class="status-badge" id="state-badge">Idle</span>
+        </div>
+
+        <!-- Last result -->
+        <div class="panel" id="result-panel">
+          <div class="panel-head">
+            <span class="panel-label">Last result</span>
+            <div class="panel-actions">
+              <button class="btn-ghost" id="save-result-snippet-btn">Save as snippet</button>
+              <button class="btn-ghost" id="copy-result-btn">Copy</button>
+              <button class="btn-ghost" id="clear-result-btn">Clear</button>
+            </div>
+          </div>
+          <p class="result-body" id="last-cleaned">Hold Alt + K and speak — your text appears here.</p>
+          <div class="result-chips">
+            <span class="chip" id="last-delivery"></span>
+            <span class="chip" id="last-duration"></span>
           </div>
         </div>
-        <p class="result-body" id="last-cleaned">Hold Alt + K and speak — your text appears here.</p>
-        <div class="result-chips">
-          <span class="chip" id="last-delivery"></span>
-          <span class="chip" id="last-duration"></span>
+
+        <!-- History -->
+        <div class="panel" id="history-panel">
+          <div class="panel-head">
+            <span class="panel-label">History</span>
+            <button class="btn-ghost" id="clear-history-btn">Clear all</button>
+          </div>
+          <div class="history-list" id="history-list">
+            <p class="empty-hint">Your recent dictations will appear here.</p>
+          </div>
         </div>
+
       </div>
 
-      <!-- History -->
-      <div class="panel" id="history-panel">
-        <div class="panel-head">
-          <span class="panel-label">History</span>
-          <button class="btn-ghost" id="clear-history-btn">Clear all</button>
+      <!-- ── Page: Snippets ─────────────────────────────────────────────── -->
+      <div class="page" id="page-snippets">
+
+        <div class="page-header">
+          <div>
+            <h2 class="page-title">Snippets</h2>
+            <p class="page-sub">Say a trigger phrase — the full expansion types instantly.</p>
+          </div>
+          <button class="btn-primary" id="add-snippet-btn">+ Add snippet</button>
         </div>
-        <div class="history-list" id="history-list">
-          <p class="empty-hint">Your recent dictations will appear here.</p>
+
+        <!-- Suggestions -->
+        <div class="panel" id="suggestions-panel" style="display:none">
+          <div class="panel-head">
+            <span class="panel-label">Suggested from your history</span>
+          </div>
+          <div id="suggestions-list" class="snippets-grid"></div>
         </div>
+
+        <!-- Existing snippets -->
+        <div class="panel">
+          <div class="panel-head">
+            <span class="panel-label">Your snippets</span>
+            <span class="panel-count" id="snippet-count-label"></span>
+          </div>
+          <div id="snippets-list">
+            <div class="empty-state">
+              <p class="empty-state-title">No snippets yet</p>
+              <p class="empty-state-hint">Add one above, or after dictating say <em>"save snippet as [name]"</em></p>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ── Page: Transcribe ───────────────────────────────────────────── -->
+      <div class="page" id="page-transcribe">
+
+        <div class="page-header">
+          <div>
+            <h2 class="page-title">Transcribe file</h2>
+            <p class="page-sub">Drop any audio file — get a clean, accurate transcript in seconds.</p>
+          </div>
+        </div>
+
+        <!-- Drop zone -->
+        <div class="dropzone panel" id="file-dropzone">
+          <div class="dropzone-inner" id="dropzone-idle">
+            <svg class="dropzone-icon" viewBox="0 0 40 40" fill="none">
+              <circle cx="20" cy="20" r="18" stroke="rgba(255,255,255,0.10)" stroke-width="1.5"/>
+              <path d="M20 13v9M16 18l4-5 4 5" stroke="rgba(255,255,255,0.55)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M13 27h14" stroke="rgba(255,255,255,0.25)" stroke-width="1.4" stroke-linecap="round"/>
+            </svg>
+            <p class="dropzone-label">Drop an audio file here</p>
+            <p class="dropzone-hint">MP3 · WAV · M4A · FLAC · OGG · AAC</p>
+            <button class="btn-ghost" id="browse-btn">Browse files</button>
+          </div>
+          <div class="dropzone-inner is-hidden" id="dropzone-selected">
+            <svg class="dropzone-icon" viewBox="0 0 40 40" fill="none">
+              <circle cx="20" cy="20" r="18" stroke="rgba(255,255,255,0.14)" stroke-width="1.5"/>
+              <path d="M14 20l4 4 8-8" stroke="rgba(255,255,255,0.7)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <p class="dropzone-label" id="selected-filename">meeting.mp3</p>
+            <div style="display:flex;gap:8px;margin-top:4px">
+              <button class="btn-ghost" id="transcribe-btn">Transcribe</button>
+              <button class="btn-ghost" id="change-file-btn">Change file</button>
+            </div>
+          </div>
+          <div class="dropzone-inner is-hidden" id="dropzone-loading">
+            <div class="spinner"></div>
+            <p class="dropzone-label">Transcribing…</p>
+            <p class="dropzone-hint" id="transcribing-filename"></p>
+          </div>
+        </div>
+
+        <!-- Result -->
+        <div class="panel is-hidden" id="transcribe-result">
+          <div class="panel-head">
+            <span class="panel-label">Transcript</span>
+            <div class="panel-actions">
+              <button class="btn-ghost" id="copy-transcript-btn">Copy</button>
+              <button class="btn-ghost" id="new-transcription-btn">New</button>
+            </div>
+          </div>
+          <p class="result-body has-content" id="transcript-output"></p>
+          <div class="result-chips">
+            <span class="chip" id="transcript-words"></span>
+            <span class="chip" id="transcript-duration"></span>
+            <span class="chip" id="transcript-file"></span>
+          </div>
+        </div>
+
       </div>
 
     </main>
@@ -137,6 +259,27 @@
       <p class="sheet-eyebrow" id="sheet-eyebrow">Choose</p>
       <h3 class="sheet-title" id="sheet-title">Select option</h3>
       <div class="option-list" id="option-list"></div>
+    </div>
+  </div>
+
+  <!-- Add / Save snippet modal -->
+  <div class="sheet is-hidden" id="snippet-modal" aria-hidden="true">
+    <div class="sheet-scrim" id="snippet-modal-backdrop"></div>
+    <div class="sheet-panel sheet-panel--wide">
+      <p class="sheet-eyebrow">Snippet</p>
+      <h3 class="sheet-title" id="snippet-modal-title">Add snippet</h3>
+      <div class="form-group">
+        <label class="form-label">Trigger phrase <span class="form-hint">Say this to expand</span></label>
+        <input class="form-input" id="snippet-trigger-input" type="text" placeholder="e.g. my email" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Expansion <span class="form-hint">What gets typed</span></label>
+        <textarea class="form-textarea" id="snippet-expansion-input" placeholder="e.g. hello@example.com" rows="4"></textarea>
+      </div>
+      <div class="sheet-actions">
+        <button class="btn-ghost" id="snippet-cancel-btn">Cancel</button>
+        <button class="btn-primary" id="snippet-save-btn">Save</button>
+      </div>
     </div>
   </div>
 

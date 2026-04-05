@@ -69,6 +69,10 @@ class KoeApp:
             self._clear_last_result,
             self._quit_from_popup,
             self._clear_history,
+            on_get_snippets_data=self._get_snippets_data,
+            on_add_snippet=self._add_snippet,
+            on_delete_snippet=self._delete_snippet,
+            on_transcribe_file=self._transcribe_file_path,
         )
 
     def _safe_set_overlay_state(self, state: OverlayState):
@@ -183,6 +187,22 @@ class KoeApp:
                 return
 
             self._last_transcript = text
+
+            # Check for voice command: "save snippet as <trigger>"
+            import re as _re
+            _save_cmd = _re.match(
+                r"^save\s+(?:as\s+)?snippet\s+(?:as\s+)?(.+)$",
+                text.strip().rstrip("."),
+                _re.IGNORECASE,
+            )
+            if _save_cmd and self._last_cleaned:
+                trigger = _save_cmd.group(1).strip().rstrip(".")
+                self.snippets.add(trigger, self._last_cleaned)
+                self._set_status(f"Snippet saved: \"{trigger}\"")
+                self._last_delivery = f"Snippet saved: \"{trigger}\""
+                self._safe_set_overlay_state(OverlayState.HIDDEN)
+                self._update_tray_icon("idle")
+                return
 
             # Check for snippet match before cleanup
             snippet_expansion = self.snippets.match(text)
@@ -416,6 +436,45 @@ class KoeApp:
                 self._tray_icon.stop()
             except Exception:
                 pass
+
+    def _get_snippets_data(self) -> dict:
+        """Return current snippets + auto-suggestions for the UI."""
+        return {
+            "snippets": self.snippets.all(),
+            "suggestions": self.snippets.suggest(list(self._history)),
+        }
+
+    def _add_snippet(self, trigger: str, expansion: str) -> dict:
+        """Add a snippet and return updated data."""
+        self.snippets.add(trigger, expansion)
+        return self._get_snippets_data()
+
+    def _delete_snippet(self, trigger: str) -> dict:
+        """Delete a snippet and return updated data."""
+        self.snippets.delete(trigger)
+        return self._get_snippets_data()
+
+    def _transcribe_file_path(self, path: str) -> dict:
+        """Transcribe an audio file from disk and return the result."""
+        import time as _time
+        try:
+            t0 = _time.monotonic()
+            raw = self.transcriber.transcribe_file(path)
+            dt = _time.monotonic() - t0
+            if not raw:
+                return {"error": "No speech detected in file"}
+            cleaned = self.cleaner.clean(raw)
+            word_count = len(cleaned.split())
+            return {
+                "text": cleaned,
+                "rawText": raw,
+                "duration": round(dt, 1),
+                "wordCount": word_count,
+                "filename": path.split("\\")[-1].split("/")[-1],
+            }
+        except Exception as exc:
+            logger.error("File transcription failed: %s", exc, exc_info=True)
+            return {"error": str(exc)}
 
     def _shutdown(self):
         """Clean shutdown of all modules."""
