@@ -102,14 +102,21 @@ class HotkeyListener:
             )
 
         if self.config.expand_snippet.strip() and self._on_expand_snippet:
-            keyboard.add_hotkey(
-                self.config.expand_snippet,
-                lambda: threading.Thread(
-                    target=self._on_expand_snippet, daemon=True,
-                    name="koe-expand-snippet",
-                ).start(),
-                suppress=True,
-            )
+            try:
+                expand_parts = self._parse_hotkey(self.config.expand_snippet)
+                expand_key   = self._resolve_trigger_key(expand_parts)
+                expand_mods  = expand_parts - {expand_key}
+
+                def _on_expand_press(event):
+                    if all(self._is_modifier_pressed(m) for m in expand_mods):
+                        threading.Thread(
+                            target=self._on_expand_snippet, daemon=True,
+                            name="koe-expand-snippet",
+                        ).start()
+
+                keyboard.on_press_key(expand_key, _on_expand_press, suppress=False)
+            except ValueError:
+                logger.warning("Invalid expand_snippet hotkey: %s", self.config.expand_snippet)
 
         logger.info(
             "Hotkeys registered: trigger=%s, toggle=%s",
