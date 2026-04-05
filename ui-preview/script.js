@@ -352,6 +352,7 @@ document.getElementById("save-result-snippet-btn").addEventListener("click", () 
 let txFilePath  = "";
 let txFilename  = "";
 let txResults   = [];    // {filename, text, wordCount, duration}
+let txIsAdding  = false; // true when adding a 2nd+ file while done panel is visible
 
 const TX_STEPS = ["pick", "ready", "progress", "done", "error"];
 function txShow(step) {
@@ -361,16 +362,60 @@ function txShow(step) {
   });
 }
 
+// Inline progress block shown inside the done panel when adding a file
+function _showInlineProgress(filename) {
+  const list = document.getElementById("tx-transcript-list");
+  // Remove any previous inline block
+  const old = list.querySelector(".tx-inline-progress");
+  if (old) old.remove();
+  // Separator above
+  if (txResults.length > 0) {
+    const sep = document.createElement("div");
+    sep.className = "tx-result-sep tx-inline-sep";
+    list.appendChild(sep);
+  }
+  const el = document.createElement("div");
+  el.className = "tx-inline-progress";
+  el.innerHTML = `
+    <div class="tx-inline-head">
+      <div class="spinner spinner--sm"></div>
+      <span class="tx-inline-filename">${esc(filename)}</span>
+      <span class="tx-inline-pct" id="inline-pct">0%</span>
+    </div>
+    <div class="tx-progress-bar-wrap" style="margin-top:8px">
+      <div class="tx-progress-bar" id="inline-bar" style="width:0%"></div>
+    </div>
+    <p class="tx-live-text" id="inline-live" style="margin-top:8px">Warming up\u2026</p>
+  `;
+  list.appendChild(el);
+}
+
+function _removeInlineProgress() {
+  const list = document.getElementById("tx-transcript-list");
+  const sep  = list.querySelector(".tx-inline-sep");
+  if (sep)  sep.remove();
+  const el   = list.querySelector(".tx-inline-progress");
+  if (el)   el.remove();
+}
+
 async function pickFile(addMode = false) {
   if (!hasApi()) return;
   const result = await window.pywebview.api.open_file_dialog();
   if (result && result.path) {
     txFilePath = result.path;
     txFilename = result.filename;
-    document.getElementById("ready-filename").textContent = txFilename;
-    txShow("ready");
+    txIsAdding = addMode && txResults.length > 0;
+
+    if (txIsAdding) {
+      // Stay on done panel — show inline spinner immediately and start
+      _showInlineProgress(txFilename);
+      await window.pywebview.api.start_file_transcription(txFilePath);
+    } else {
+      document.getElementById("ready-filename").textContent = txFilename;
+      txShow("ready");
+    }
   } else if (addMode && txResults.length > 0) {
-    // User cancelled picker while in "add" mode — go back to done
+    // User cancelled picker — stay on done
     txShow("done");
   }
 }
@@ -380,26 +425,56 @@ async function runTranscription() {
   document.getElementById("progress-filename").textContent = txFilename;
   document.getElementById("progress-bar").style.width = "0%";
   document.getElementById("progress-pct").textContent = "0%";
-  document.getElementById("live-transcript").textContent = "Warming up…";
+  document.getElementById("live-transcript").textContent = "Warming up\u2026";
   txShow("progress");
   await window.pywebview.api.start_file_transcription(txFilePath);
 }
 
 window.__koeTranscribeProgress = function(data) {
   if (data.error) {
-    document.getElementById("tx-error-text").textContent = data.error;
-    txShow("error");
-    return;
-  }
-  if (!data.done) {
-    const pct = Math.round((data.progress || 0) * 100);
-    document.getElementById("progress-bar").style.width = pct + "%";
-    document.getElementById("progress-pct").textContent = pct + "%";
-    if (data.partialText) {
-      document.getElementById("live-transcript").textContent = data.partialText;
+    if (txIsAdding) {
+      _removeInlineProgress();
+      // Show error inline rather than switching panels
+      const list = document.getElementById("tx-transcript-list");
+      const errEl = document.createElement("p");
+      errEl.className = "tx-inline-error";
+      errEl.textContent = "Error: " + (data.error || "Transcription failed");
+      list.appendChild(errEl);
+    } else {
+      document.getElementById("tx-error-text").textContent = data.error;
+      txShow("error");
     }
+    txIsAdding = false;
     return;
   }
+
+  if (txIsAdding) {
+    // Route updates to the inline progress block
+    if (!data.done) {
+      const pct    = Math.round((data.progress || 0) * 100);
+      const bar    = document.getElementById("inline-bar");
+      const pctEl  = document.getElementById("inline-pct");
+      const liveEl = document.getElementById("inline-live");
+      if (bar)    bar.style.width   = pct + "%";
+      if (pctEl)  pctEl.textContent = pct + "%";
+      if (liveEl && data.partialText) liveEl.textContent = data.partialText;
+      return;
+    }
+    // Done — remove inline block, push result, re-render
+    _removeInlineProgress();
+    txIsAdding = false;
+  } else {
+    if (!data.done) {
+      const pct = Math.round((data.progress || 0) * 100);
+      document.getElementById("progress-bar").style.width = pct + "%";
+      document.getElementById("progress-pct").textContent = pct + "%";
+      if (data.partialText) {
+        document.getElementById("live-transcript").textContent = data.partialText;
+      }
+      return;
+    }
+  }
+
   // Transcription complete — push to results list
   const text = data.text || data.partialText || "";
   txResults.push({
