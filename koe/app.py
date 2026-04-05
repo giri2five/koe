@@ -457,19 +457,24 @@ class KoeApp:
           5. If matched, paste expansion in place of the selection
           6. Restore old clipboard after paste settles
         """
+        import ctypes as _ct
         import keyboard as _kb
 
         try:
-            # Release hotkey modifier keys (Ctrl + Shift) before sending
-            # Ctrl+C — Shift held would turn it into Ctrl+Shift+C which
-            # most apps don't treat as copy.
-            for _mod in ("left ctrl", "right ctrl", "ctrl",
-                         "left shift", "right shift", "shift"):
-                try:
-                    _kb.release(_mod)
-                except Exception:
-                    pass
-            time.sleep(0.06)
+            # Wait for Ctrl and Shift to be physically released before
+            # sending Ctrl+C.  We NEVER send synthetic key-up events —
+            # fake releases corrupt the OS keyboard state for other apps.
+            _VK_CTRL  = 0x11   # VK_CONTROL — either side
+            _VK_SHIFT = 0x10   # VK_SHIFT   — either side
+
+            deadline = time.monotonic() + 1.0
+            while time.monotonic() < deadline:
+                ctrl_held  = bool(_ct.windll.user32.GetAsyncKeyState(_VK_CTRL)  & 0x8000)
+                shift_held = bool(_ct.windll.user32.GetAsyncKeyState(_VK_SHIFT) & 0x8000)
+                if not ctrl_held and not shift_held:
+                    break
+                time.sleep(0.02)
+            time.sleep(0.03)   # small extra settle before Ctrl+C
 
             # Save and sentinel-clear clipboard
             old_clip = pyperclip.paste()
