@@ -321,78 +321,110 @@ document.getElementById("save-result-snippet-btn").addEventListener("click", () 
 });
 
 // ── File Transcription page ────────────────────────────────────────────────
-let selectedFilePath = "";
+let txFilePath = "";
+let txFilename = "";
 
-function setDropzoneState(state) {
-  ["dropzone-idle", "dropzone-selected", "dropzone-loading"].forEach(id => {
-    document.getElementById(id).classList.add("is-hidden");
+const TX_STEPS = ["pick", "ready", "progress", "done", "error"];
+function txShow(step) {
+  TX_STEPS.forEach(s => {
+    const el = document.getElementById("tx-step-" + s);
+    if (el) el.classList.toggle("is-hidden", s !== step);
   });
-  document.getElementById("dropzone-" + state).classList.remove("is-hidden");
 }
 
 async function pickFile() {
   if (!hasApi()) return;
   const result = await window.pywebview.api.open_file_dialog();
   if (result && result.path) {
-    selectedFilePath = result.path;
-    document.getElementById("selected-filename").textContent = result.filename;
-    setDropzoneState("selected");
-    document.getElementById("transcribe-result").classList.add("is-hidden");
+    txFilePath = result.path;
+    txFilename = result.filename;
+    document.getElementById("ready-filename").textContent = txFilename;
+    txShow("ready");
   }
 }
 
 async function runTranscription() {
-  if (!selectedFilePath || !hasApi()) return;
+  if (!txFilePath || !hasApi()) return;
+  document.getElementById("progress-filename").textContent = txFilename;
+  document.getElementById("progress-bar").style.width = "0%";
+  document.getElementById("progress-pct").textContent = "0%";
+  document.getElementById("live-transcript").textContent = "Warming up…";
+  txShow("progress");
 
-  document.getElementById("transcribing-filename").textContent = document.getElementById("selected-filename").textContent;
-  setDropzoneState("loading");
-  document.getElementById("transcribe-result").classList.add("is-hidden");
+  // Fire-and-forget — progress arrives via __koeTranscribeProgress
+  await window.pywebview.api.start_file_transcription(txFilePath);
+}
 
-  const result = await window.pywebview.api.transcribe_file(selectedFilePath);
-
-  if (result.error) {
-    setDropzoneState("selected");
-    // Show error inline
-    const out = document.getElementById("transcript-output");
-    out.textContent = "Error: " + result.error;
-    document.getElementById("transcribe-result").classList.remove("is-hidden");
+// Python pushes progress here as text appears segment by segment
+window.__koeTranscribeProgress = function(data) {
+  if (data.error) {
+    document.getElementById("tx-error-text").textContent = data.error;
+    txShow("error");
     return;
   }
-
-  setDropzoneState("selected");
-  document.getElementById("transcript-output").textContent = result.text || "";
-  document.getElementById("transcript-words").textContent  = result.wordCount ? `${result.wordCount} words` : "";
-  document.getElementById("transcript-duration").textContent = result.duration ? `${result.duration}s` : "";
-  document.getElementById("transcript-file").textContent   = result.filename || "";
-  document.getElementById("transcribe-result").classList.remove("is-hidden");
-}
+  if (!data.done) {
+    // Live preview update
+    const pct = Math.round((data.progress || 0) * 100);
+    document.getElementById("progress-bar").style.width = pct + "%";
+    document.getElementById("progress-pct").textContent = pct + "%";
+    if (data.partialText) {
+      document.getElementById("live-transcript").textContent = data.partialText;
+    }
+    return;
+  }
+  // Finished
+  const text = data.text || data.partialText || "";
+  document.getElementById("transcript-output").textContent = text;
+  document.getElementById("transcript-words").textContent  =
+    data.wordCount ? `${data.wordCount} words` : (text ? `${text.split(/\s+/).length} words` : "");
+  document.getElementById("transcript-duration").textContent =
+    data.duration ? `${data.duration}s to transcribe` : "";
+  document.getElementById("transcript-file").textContent = data.filename || txFilename;
+  txShow("done");
+};
 
 document.getElementById("browse-btn").addEventListener("click", pickFile);
 document.getElementById("change-file-btn").addEventListener("click", pickFile);
 document.getElementById("transcribe-btn").addEventListener("click", runTranscription);
+
 document.getElementById("copy-transcript-btn").addEventListener("click", () => {
   const text = document.getElementById("transcript-output").textContent;
   if (!text) return;
   if (hasApi()) window.pywebview.api.copy_text(text);
   else navigator.clipboard?.writeText(text);
 });
-document.getElementById("new-transcription-btn").addEventListener("click", () => {
-  selectedFilePath = "";
-  document.getElementById("transcribe-result").classList.add("is-hidden");
-  setDropzoneState("idle");
+
+document.getElementById("clear-transcript-btn").addEventListener("click", () => {
+  document.getElementById("transcript-output").textContent = "";
+  document.getElementById("transcript-words").textContent  = "";
+  document.getElementById("transcript-duration").textContent = "";
+  document.getElementById("transcript-file").textContent  = "";
+  // Stay on done page — user can hit "New file" to start over
 });
 
-// Drag & drop support
-const dropzone = document.getElementById("file-dropzone");
-dropzone.addEventListener("dragover", e => { e.preventDefault(); dropzone.classList.add("drag-over"); });
-dropzone.addEventListener("dragleave", () => dropzone.classList.remove("drag-over"));
-dropzone.addEventListener("drop", async e => {
-  e.preventDefault();
-  dropzone.classList.remove("drag-over");
-  // In pywebview we can't get actual file paths from drop events easily,
-  // so just trigger the file picker instead
-  await pickFile();
+document.getElementById("new-transcription-btn").addEventListener("click", () => {
+  txFilePath = "";
+  txFilename = "";
+  txShow("pick");
 });
+
+document.getElementById("retry-transcription-btn").addEventListener("click", () => {
+  txFilePath = "";
+  txFilename = "";
+  txShow("pick");
+});
+
+// Drag-and-drop — trigger native file picker since we can't read paths from DnD
+const dropzone = document.getElementById("file-dropzone");
+if (dropzone) {
+  dropzone.addEventListener("dragover", e => { e.preventDefault(); dropzone.classList.add("drag-over"); });
+  dropzone.addEventListener("dragleave", () => dropzone.classList.remove("drag-over"));
+  dropzone.addEventListener("drop", async e => {
+    e.preventDefault();
+    dropzone.classList.remove("drag-over");
+    await pickFile();
+  });
+}
 
 // ── API bridge ─────────────────────────────────────────────────────────────
 function hasApi() { return Boolean(window.pywebview?.api); }

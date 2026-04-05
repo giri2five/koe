@@ -815,6 +815,94 @@ html, body {
   margin-top: 18px;
 }
 
+/* ── Transcription steps ─────────────────────────────────────────────────── */
+.tx-step { display: flex; flex-direction: column; gap: 12px; }
+.tx-step.is-hidden { display: none; }
+
+.tx-file-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 16px 20px;
+}
+
+.tx-file-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.tx-file-icon { width: 24px; height: 24px; flex: 0 0 auto; }
+
+.tx-file-name {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tx-file-hint { font-size: 11.5px; color: var(--text-3); margin-top: 2px; }
+
+.tx-file-actions { display: flex; gap: 8px; flex: 0 0 auto; }
+
+.tx-progress-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.spinner--sm {
+  width: 14px; height: 14px;
+  border-width: 1.8px;
+  flex: 0 0 auto;
+}
+
+.tx-progress-bar-wrap {
+  height: 3px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 999px;
+  overflow: hidden;
+  margin: 8px 0;
+}
+
+.tx-progress-bar {
+  height: 100%;
+  background: rgba(255,255,255,0.40);
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+.tx-progress-pct {
+  font-size: 11px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.tx-live-text {
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--text-2);
+  max-height: 160px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
+.tx-error-msg {
+  font-size: 13px;
+  color: rgba(255, 100, 80, 0.85);
+  line-height: 1.5;
+}
+
 /* ── History extras ──────────────────────────────────────────────────────── */
 .h-entry-btn {
   flex: 0 0 auto;

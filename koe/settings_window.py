@@ -88,9 +88,9 @@ class _SettingsBridge:
         """Open a native audio file picker. Returns {path, filename}."""
         return self._owner.open_file_dialog()
 
-    def transcribe_file(self, path: str) -> dict:
-        """Transcribe an audio file at the given path."""
-        return self._owner.transcribe_file(path)
+    def start_file_transcription(self, path: str) -> dict:
+        """Start async transcription. Progress pushed via window.__koeTranscribeProgress."""
+        return self._owner.start_file_transcription(path)
 
 
 class SettingsWindow:
@@ -371,13 +371,43 @@ class SettingsWindow:
             logger.exception("File dialog failed")
         return {"path": "", "filename": ""}
 
-    def transcribe_file(self, path: str) -> dict:
-        """Transcribe an audio file. Runs synchronously on the bridge thread."""
+    def start_file_transcription(self, path: str) -> dict:
+        """Start async file transcription. Progress is pushed via window.__koeTranscribeProgress.
+
+        Returns immediately with {"started": true}. The JS side should listen for
+        window.__koeTranscribeProgress({progress, partialText, done, text, wordCount, ...}).
+        """
         if not path:
             return {"error": "No file selected"}
-        if self._on_transcribe_file:
-            return self._on_transcribe_file(path)
-        return {"error": "Transcription not available"}
+        if not self._on_transcribe_file:
+            return {"error": "Transcription not available"}
+
+        threading.Thread(
+            target=self._run_file_transcription,
+            args=(path,),
+            daemon=True,
+            name="koe-file-transcription",
+        ).start()
+        return {"started": True}
+
+    def _run_file_transcription(self, path: str):
+        """Background thread: transcribes file and pushes progress to JS."""
+        import json
+
+        def _push(payload: dict):
+            if self._window and self._loaded.is_set():
+                try:
+                    self._window.evaluate_js(
+                        f"window.__koeTranscribeProgress({json.dumps(payload, ensure_ascii=False)})"
+                    )
+                except Exception:
+                    logger.debug("Failed to push transcription progress", exc_info=True)
+
+        def on_progress(progress: float, partial: str, done: bool):
+            _push({"progress": progress, "partialText": partial, "done": False})
+
+        result = self._on_transcribe_file(path, on_progress)
+        _push({**result, "done": True, "progress": 1.0})
 
     def _mutate_config(self, mutation: Callable[[KoeConfig], None]):
         with self._lock:

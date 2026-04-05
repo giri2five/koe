@@ -75,9 +75,36 @@ class SnippetStore:
         self._ensure_loaded()
 
     def match(self, text: str) -> str | None:
-        """Return expansion if text matches a trigger, else None."""
+        """Return expansion if text is exactly a trigger phrase (case-insensitive).
+
+        Strips trailing punctuation that Whisper commonly appends ("My email." → "my email").
+        """
         self._ensure_loaded()
-        return self._snippets.get(text.strip().lower())
+        # Normalize: lowercase, strip whitespace, strip trailing punctuation
+        normalized = text.strip().lower().rstrip(".,!?;:")
+        return self._snippets.get(normalized)
+
+    def find_in_text(self, text: str) -> list[tuple[str, str]]:
+        """Return all (trigger, expansion) pairs whose trigger appears in text.
+
+        Used for partial/in-text snippet detection after delivery.
+        Only returns matches where the trigger is a complete word boundary match.
+        """
+        self._ensure_loaded()
+        matches = []
+        text_lower = text.lower()
+        for trigger, expansion in self._snippets.items():
+            # Check trigger appears as a word (not inside another word)
+            idx = text_lower.find(trigger)
+            if idx == -1:
+                continue
+            # Boundary check: char before and after must not be alphanumeric
+            before_ok = idx == 0 or not text_lower[idx - 1].isalnum()
+            after_idx = idx + len(trigger)
+            after_ok  = after_idx >= len(text_lower) or not text_lower[after_idx].isalnum()
+            if before_ok and after_ok:
+                matches.append((trigger, expansion))
+        return matches
 
     def count(self) -> int:
         self._ensure_loaded()

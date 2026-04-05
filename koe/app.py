@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import threading
 import time
 from typing import Optional
@@ -20,6 +21,7 @@ from koe.hotkey import HotkeyListener
 from koe.output import OutputEngine, OutputMode, WindowTarget
 from koe.overlay import Overlay, OverlayState
 from koe.settings_window import SettingsWindow
+from koe.snippet_prompt import SnippetPrompt
 from koe.snippets import SnippetStore
 from koe.transcriber import Transcriber
 
@@ -45,6 +47,7 @@ class KoeApp:
         self.transcriber = Transcriber(self.config.transcription)
         self.cleaner = TextCleaner(self.config.cleanup)
         self.snippets = SnippetStore()
+        self.snippet_prompt = SnippetPrompt()
         self.output = OutputEngine(self.config.output)
         sounds.set_output_device(self.config.audio.output_device)
 
@@ -266,6 +269,8 @@ class KoeApp:
                 self._history.append({"text": text, "time": _dt.now().strftime("%H:%M")})
                 if len(self._history) > 20:
                     self._history = self._history[-20:]
+                # Check for in-text snippet triggers after delivery
+                self._offer_snippet_replacement(text)
 
         except Exception as exc:
             logger.error("Processing failed: %s", exc, exc_info=True)
@@ -454,23 +459,64 @@ class KoeApp:
         self.snippets.delete(trigger)
         return self._get_snippets_data()
 
-    def _transcribe_file_path(self, path: str) -> dict:
-        """Transcribe an audio file from disk and return the result."""
+    def _offer_snippet_replacement(self, delivered_text: str):
+        """If the delivered text contains a snippet trigger, offer an inline replacement."""
+        matches = self.snippets.find_in_text(delivered_text)
+        if not matches:
+            return
+        trigger, expansion = matches[0]   # offer the first match
+
+        def on_accept():
+            """Replace delivered_text in the focused window with the snippet expansion."""
+            import re as _re
+            new_text = _re.sub(_re.escape(trigger), expansion, delivered_text, flags=_re.IGNORECASE)
+            try:
+                import keyboard as _kb
+                import pyperclip as _pc
+                _pc.copy(new_text)
+                # Delete the delivered chars and paste the expansion
+                for _ in range(len(delivered_text)):
+                    _kb.press_and_release('backspace')
+                time.sleep(0.04)
+                _kb.send('ctrl+v')
+                self._last_cleaned = new_text
+                self._set_status(f'Snippet expanded: "{trigger}"')
+                logger.info("Snippet replaced %r → %r", trigger, expansion[:40])
+            except Exception as exc:
+                logger.error("Snippet replacement error: %s", exc)
+
+        def on_dismiss():
+            pass
+
+        self.snippet_prompt.offer(trigger, expansion, delivered_text, on_accept, on_dismiss)
+
+    def _transcribe_file_path(self, path: str, on_progress=None) -> dict:
+        """Transcribe an audio file, streaming progress via on_progress(partial, 0-1)."""
         import time as _time
         try:
             t0 = _time.monotonic()
-            raw = self.transcriber.transcribe_file(path)
+
+            def _seg_cb(partial: str, progress: float):
+                cleaned_partial = self.cleaner.clean(partial) if partial else ""
+                if on_progress:
+                    on_progress(progress, cleaned_partial, False)
+
+            raw = self.transcriber.transcribe_file_stream(path, _seg_cb)
             dt = _time.monotonic() - t0
+
             if not raw:
                 return {"error": "No speech detected in file"}
+
             cleaned = self.cleaner.clean(raw)
             word_count = len(cleaned.split())
+            filename = path.replace("\\", "/").split("/")[-1]
             return {
                 "text": cleaned,
                 "rawText": raw,
                 "duration": round(dt, 1),
                 "wordCount": word_count,
-                "filename": path.split("\\")[-1].split("/")[-1],
+                "filename": filename,
+                "done": True,
             }
         except Exception as exc:
             logger.error("File transcription failed: %s", exc, exc_info=True)

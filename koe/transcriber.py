@@ -299,19 +299,54 @@ class Transcriber:
             return min(configured, 3)
         return configured
 
-    def transcribe_file(self, path: str) -> str:
-        """Transcribe an audio file from disk. Returns cleaned text."""
+    def transcribe_file_stream(
+        self,
+        path: str,
+        on_segment,   # Callable[[str, float], None] — (partial_text, 0-1 progress)
+    ) -> str:
+        """Transcribe an audio file, calling on_segment as each segment is ready.
+
+        Uses beam_size=1 for maximum speed on file mode. Streams partial results
+        so the UI can update in real-time rather than waiting for the full file.
+
+        Returns the final full transcript.
+        """
         self._ensure_model()
-        segments, info = self._model.transcribe(
+        language = self.config.language if self.config.language != "auto" else None
+
+        segments_iter, info = self._model.transcribe(
             path,
-            language=self.config.language if self.config.language != "auto" else None,
-            beam_size=self.config.beam_size,
+            language=language,
+            beam_size=1,            # fastest for file mode; minimal accuracy trade-off
             vad_filter=True,
             word_timestamps=False,
+            condition_on_previous_text=True,
+            initial_prompt=(
+                "Transcribe the audio accurately. "
+                "Use natural punctuation. Preserve names and proper nouns carefully."
+            ),
         )
-        text = " ".join(seg.text.strip() for seg in segments).strip()
-        logger.info("File transcription: %.1fs → %d chars", info.duration, len(text))
-        return text
+
+        texts: list[str] = []
+        total_duration = max(info.duration, 1.0)
+
+        for seg in segments_iter:
+            piece = seg.text.strip()
+            if piece:
+                texts.append(piece)
+            partial  = " ".join(texts)
+            progress = min(seg.end / total_duration, 0.99)
+            try:
+                on_segment(partial, progress)
+            except Exception:
+                pass
+
+        final = " ".join(texts).strip()
+        logger.info(
+            "File transcription complete: source=%.1fs, chars=%d",
+            info.duration, len(final),
+        )
+        return final
 
     def unload(self):
         """Unload model to free GPU memory."""
