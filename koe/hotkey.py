@@ -141,38 +141,15 @@ class HotkeyListener:
 
         if self.config.expand_snippet.strip() and self._on_expand_snippet:
             try:
-                expand_parts  = self._parse_hotkey(self.config.expand_snippet)
-                expand_key    = self._resolve_trigger_key(expand_parts)
-                expand_mods   = expand_parts - {expand_key}
-
-                # Resolve everything to VK codes so we never rely on the
-                # keyboard library's name resolution (which breaks for
-                # Right Alt + Shift combinations on some layouts).
-                vk_trigger = _key_name_to_vk(expand_key)
-                vk_mods    = [
-                    _MOD_VK.get(m) or _key_name_to_vk(m)
-                    for m in expand_mods
-                ]
-                # If any VK is unknown fall back gracefully
-                if vk_trigger is None or any(v is None for v in vk_mods):
-                    raise ValueError(f"Cannot resolve VK for {self.config.expand_snippet!r}")
-
-                _k_was_down = [False]   # mutable cell for closure
-
-                def _raw_expand_hook(event):
-                    k_down = _vk_pressed(vk_trigger)
-                    if event.event_type == "down" and k_down and not _k_was_down[0]:
-                        _k_was_down[0] = True
-                        if all(_vk_pressed(v) for v in vk_mods):
-                            threading.Thread(
-                                target=self._on_expand_snippet, daemon=True,
-                                name="koe-expand-snippet",
-                            ).start()
-                    elif not k_down:
-                        _k_was_down[0] = False
-
-                keyboard.hook(_raw_expand_hook, suppress=False)
-            except ValueError as exc:
+                keyboard.add_hotkey(
+                    self.config.expand_snippet,
+                    lambda: threading.Thread(
+                        target=self._on_expand_snippet, daemon=True,
+                        name="koe-expand-snippet",
+                    ).start(),
+                    suppress=True,
+                )
+            except Exception as exc:
                 logger.warning("Cannot register expand_snippet hotkey: %s", exc)
 
         logger.info(

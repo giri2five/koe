@@ -460,11 +460,11 @@ class KoeApp:
         import keyboard as _kb
 
         try:
-            # Release the hotkey modifier keys (Alt + Shift) so they don't
-            # ride along with the Ctrl+C we're about to send.
-            # Without this, the OS sees Ctrl+Alt+Shift+C — not a copy shortcut.
-            for _mod in ("left alt", "right alt", "left shift", "right shift",
-                         "alt", "shift"):
+            # Release hotkey modifier keys (Ctrl + Shift) before sending
+            # Ctrl+C — Shift held would turn it into Ctrl+Shift+C which
+            # most apps don't treat as copy.
+            for _mod in ("left ctrl", "right ctrl", "ctrl",
+                         "left shift", "right shift", "shift"):
                 try:
                     _kb.release(_mod)
                 except Exception:
