@@ -31,9 +31,27 @@ _MOD_VK = {
     "windows": _VK_LWIN,
 }
 
+
 def _vk_pressed(vk: int) -> bool:
     """Return True if the virtual key is currently down (Win32 GetAsyncKeyState)."""
     return bool(ctypes.windll.user32.GetAsyncKeyState(vk) & 0x8000)
+
+
+def _key_name_to_vk(name: str) -> int | None:
+    """Map a key name to its Windows VK code, or None if unknown."""
+    n = name.strip().lower()
+    if len(n) == 1 and n.isalpha():
+        return ord(n.upper())   # VK_A–VK_Z = 0x41–0x5A
+    if len(n) == 1 and n.isdigit():
+        return ord(n)           # VK_0–VK_9 = 0x30–0x39
+    extras = {
+        "space": 0x20, "enter": 0x0D, "return": 0x0D,
+        "tab": 0x09, "backspace": 0x08, "esc": 0x1B, "escape": 0x1B,
+        "f1": 0x70, "f2": 0x71, "f3": 0x72, "f4": 0x73,
+        "f5": 0x74, "f6": 0x75, "f7": 0x76, "f8": 0x77,
+        "f9": 0x78, "f10": 0x79, "f11": 0x7A, "f12": 0x7B,
+    }
+    return extras.get(n)
 
 logger = logging.getLogger(__name__)
 
@@ -123,30 +141,39 @@ class HotkeyListener:
 
         if self.config.expand_snippet.strip() and self._on_expand_snippet:
             try:
-                expand_parts = self._parse_hotkey(self.config.expand_snippet)
-                expand_key   = self._resolve_trigger_key(expand_parts)
-                expand_mods  = expand_parts - {expand_key}
-                # Pre-resolve each modifier to its VK code (falls back to
-                # keyboard.is_pressed for anything not in _MOD_VK).
-                expand_vks   = [(_MOD_VK.get(m), m) for m in expand_mods]
+                expand_parts  = self._parse_hotkey(self.config.expand_snippet)
+                expand_key    = self._resolve_trigger_key(expand_parts)
+                expand_mods   = expand_parts - {expand_key}
 
-                def _on_expand_press(event):
-                    # Use GetAsyncKeyState for reliable left/right detection.
-                    for vk, name in expand_vks:
-                        if vk is not None:
-                            if not _vk_pressed(vk):
-                                return
-                        else:
-                            if not self._is_modifier_pressed(name):
-                                return
-                    threading.Thread(
-                        target=self._on_expand_snippet, daemon=True,
-                        name="koe-expand-snippet",
-                    ).start()
+                # Resolve everything to VK codes so we never rely on the
+                # keyboard library's name resolution (which breaks for
+                # Right Alt + Shift combinations on some layouts).
+                vk_trigger = _key_name_to_vk(expand_key)
+                vk_mods    = [
+                    _MOD_VK.get(m) or _key_name_to_vk(m)
+                    for m in expand_mods
+                ]
+                # If any VK is unknown fall back gracefully
+                if vk_trigger is None or any(v is None for v in vk_mods):
+                    raise ValueError(f"Cannot resolve VK for {self.config.expand_snippet!r}")
 
-                keyboard.on_press_key(expand_key, _on_expand_press, suppress=False)
-            except ValueError:
-                logger.warning("Invalid expand_snippet hotkey: %s", self.config.expand_snippet)
+                _k_was_down = [False]   # mutable cell for closure
+
+                def _raw_expand_hook(event):
+                    k_down = _vk_pressed(vk_trigger)
+                    if event.event_type == "down" and k_down and not _k_was_down[0]:
+                        _k_was_down[0] = True
+                        if all(_vk_pressed(v) for v in vk_mods):
+                            threading.Thread(
+                                target=self._on_expand_snippet, daemon=True,
+                                name="koe-expand-snippet",
+                            ).start()
+                    elif not k_down:
+                        _k_was_down[0] = False
+
+                keyboard.hook(_raw_expand_hook, suppress=False)
+            except ValueError as exc:
+                logger.warning("Cannot register expand_snippet hotkey: %s", exc)
 
         logger.info(
             "Hotkeys registered: trigger=%s, toggle=%s",
