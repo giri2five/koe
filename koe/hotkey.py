@@ -6,6 +6,7 @@ Uses the `keyboard` library for global hook on Windows.
 
 from __future__ import annotations
 
+import ctypes
 import logging
 import threading
 import time
@@ -14,6 +15,25 @@ from typing import Callable, Optional
 import keyboard
 
 from koe.config import HotkeyConfig
+
+# ── Win32 virtual-key codes for generic modifier detection ─────────────────
+# GetAsyncKeyState with these VKs checks EITHER side (left or right).
+_VK_SHIFT   = 0x10   # VK_SHIFT   — left OR right Shift
+_VK_CONTROL = 0x11   # VK_CONTROL — left OR right Ctrl
+_VK_MENU    = 0x12   # VK_MENU    — left OR right Alt (including AltGr)
+_VK_LWIN    = 0x5B   # VK_LWIN
+_VK_RWIN    = 0x5C   # VK_RWIN
+
+_MOD_VK = {
+    "shift":   _VK_SHIFT,
+    "ctrl":    _VK_CONTROL,
+    "alt":     _VK_MENU,
+    "windows": _VK_LWIN,
+}
+
+def _vk_pressed(vk: int) -> bool:
+    """Return True if the virtual key is currently down (Win32 GetAsyncKeyState)."""
+    return bool(ctypes.windll.user32.GetAsyncKeyState(vk) & 0x8000)
 
 logger = logging.getLogger(__name__)
 
@@ -106,13 +126,23 @@ class HotkeyListener:
                 expand_parts = self._parse_hotkey(self.config.expand_snippet)
                 expand_key   = self._resolve_trigger_key(expand_parts)
                 expand_mods  = expand_parts - {expand_key}
+                # Pre-resolve each modifier to its VK code (falls back to
+                # keyboard.is_pressed for anything not in _MOD_VK).
+                expand_vks   = [(_MOD_VK.get(m), m) for m in expand_mods]
 
                 def _on_expand_press(event):
-                    if all(self._is_modifier_pressed(m) for m in expand_mods):
-                        threading.Thread(
-                            target=self._on_expand_snippet, daemon=True,
-                            name="koe-expand-snippet",
-                        ).start()
+                    # Use GetAsyncKeyState for reliable left/right detection.
+                    for vk, name in expand_vks:
+                        if vk is not None:
+                            if not _vk_pressed(vk):
+                                return
+                        else:
+                            if not self._is_modifier_pressed(name):
+                                return
+                    threading.Thread(
+                        target=self._on_expand_snippet, daemon=True,
+                        name="koe-expand-snippet",
+                    ).start()
 
                 keyboard.on_press_key(expand_key, _on_expand_press, suppress=False)
             except ValueError:
