@@ -189,18 +189,22 @@ function closeSheet() {
 }
 
 // ── Snippet modal ──────────────────────────────────────────────────────────
-const snippetModal     = document.getElementById("snippet-modal");
-const snippetTrigger   = document.getElementById("snippet-trigger-input");
-const snippetExpansion = document.getElementById("snippet-expansion-input");
-const snippetModalTitle = document.getElementById("snippet-modal-title");
+const snippetModal         = document.getElementById("snippet-modal");
+const snippetTrigger       = document.getElementById("snippet-trigger-input");
+const snippetExpansion     = document.getElementById("snippet-expansion-input");
+const snippetModalTitle    = document.getElementById("snippet-modal-title");
+const snippetOriginalTrig  = document.getElementById("snippet-original-trigger");
 
-function openSnippetModal(trigger = "", expansion = "") {
-  snippetModalTitle.textContent = expansion ? "Save as snippet" : "Add snippet";
-  snippetTrigger.value   = trigger;
-  snippetExpansion.value = expansion;
+// mode: "add" | "edit" | "save-from-result"
+function openSnippetModal(trigger = "", expansion = "", originalTrigger = null) {
+  const isEdit = originalTrigger !== null && originalTrigger !== "";
+  snippetModalTitle.textContent = isEdit ? "Edit snippet" : (expansion ? "Save as snippet" : "Add snippet");
+  snippetTrigger.value          = trigger;
+  snippetExpansion.value        = expansion;
+  snippetOriginalTrig.value     = originalTrigger || "";
   snippetModal.classList.remove("is-hidden");
   snippetModal.setAttribute("aria-hidden", "false");
-  setTimeout(() => snippetTrigger.focus(), 60);
+  setTimeout(() => (trigger ? snippetExpansion.focus() : snippetTrigger.focus()), 60);
 }
 
 function closeSnippetModal() {
@@ -214,20 +218,28 @@ document.getElementById("snippet-modal-backdrop").addEventListener("click", clos
 document.getElementById("snippet-save-btn").addEventListener("click", async () => {
   const trigger   = snippetTrigger.value.trim();
   const expansion = snippetExpansion.value.trim();
-  if (!trigger || !expansion) {
-    snippetTrigger.focus();
-    return;
-  }
+  const original  = snippetOriginalTrig.value.trim();
+  if (!trigger || !expansion) { snippetTrigger.focus(); return; }
   closeSnippetModal();
-  if (hasApi()) {
-    const data = await window.pywebview.api.add_snippet(trigger, expansion);
-    renderSnippetsPage(data);
-    // If not on snippets page, show a brief nav badge update
-    applyState({ snippetCount: (data.snippets || []).length });
+  if (!hasApi()) return;
+
+  let data;
+  if (original && original.toLowerCase() !== trigger.toLowerCase()) {
+    // trigger renamed → call edit_snippet
+    data = await window.pywebview.api.edit_snippet(original, trigger, expansion);
+  } else if (original) {
+    // same trigger, just update expansion
+    data = await window.pywebview.api.edit_snippet(original, trigger, expansion);
+  } else {
+    data = await window.pywebview.api.add_snippet(trigger, expansion);
   }
+  renderSnippetsPage(data);
+  applyState({ snippetCount: (data.snippets || []).length });
 });
 
 // ── Snippets page ──────────────────────────────────────────────────────────
+let suggestionsDismissed = false;
+
 async function loadSnippetsPage() {
   if (!hasApi()) {
     renderSnippetsPage({ snippets: [], suggestions: [] });
@@ -244,12 +256,13 @@ function renderSnippetsPage(data) {
   // Badge + count label
   applyState({ snippetCount: snippets.length });
   const countLabel = document.getElementById("snippet-count-label");
-  countLabel.textContent = snippets.length ? `${snippets.length} snippet${snippets.length !== 1 ? "s" : ""}` : "";
+  countLabel.textContent = snippets.length
+    ? `${snippets.length} snippet${snippets.length !== 1 ? "s" : ""}` : "";
 
-  // Suggestions panel
+  // Suggestions panel (respects dismiss flag)
   const sugPanel = document.getElementById("suggestions-panel");
   const sugList  = document.getElementById("suggestions-list");
-  if (suggestions.length > 0) {
+  if (suggestions.length > 0 && !suggestionsDismissed) {
     sugPanel.style.display = "";
     sugList.innerHTML = "";
     suggestions.forEach(s => {
@@ -292,24 +305,40 @@ function renderSnippetsPage(data) {
         </svg>
         <span class="snippet-expansion-text">${esc(s.expansion)}</span>
       </div>
-      <button class="snippet-delete-btn" data-trigger="${esc(s.trigger)}" title="Delete">
-        <svg viewBox="0 0 12 12" fill="none">
-          <path d="M2 2l8 8M10 2L2 10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
-        </svg>
-      </button>
+      <div class="snippet-row-actions">
+        <button class="snippet-action-btn" data-action="edit"
+                data-trigger="${esc(s.trigger)}" data-expansion="${esc(s.expansion)}" title="Edit">
+          <svg viewBox="0 0 12 12" fill="none">
+            <path d="M8.5 1.5l2 2L3 11H1V9l7.5-7.5z" stroke="currentColor" stroke-width="1.3"
+                  stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        <button class="snippet-action-btn snippet-action-btn--delete"
+                data-action="delete" data-trigger="${esc(s.trigger)}" title="Delete">
+          <svg viewBox="0 0 12 12" fill="none">
+            <path d="M2 2l8 8M10 2L2 10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
     `;
-    row.querySelector(".snippet-delete-btn").addEventListener("click", async e => {
-      const trigger = e.currentTarget.dataset.trigger;
+    row.querySelector('[data-action="edit"]').addEventListener("click", e => {
+      const { trigger, expansion } = e.currentTarget.dataset;
+      openSnippetModal(trigger, expansion, trigger);  // originalTrigger = trigger
+    });
+    row.querySelector('[data-action="delete"]').addEventListener("click", async e => {
       if (!hasApi()) return;
-      const data = await window.pywebview.api.delete_snippet(trigger);
+      const data = await window.pywebview.api.delete_snippet(e.currentTarget.dataset.trigger);
       renderSnippetsPage(data);
     });
     list.appendChild(row);
   });
 }
 
-document.getElementById("add-snippet-btn").addEventListener("click", () => {
-  openSnippetModal();
+document.getElementById("add-snippet-btn").addEventListener("click", () => openSnippetModal());
+
+document.getElementById("dismiss-suggestions-btn").addEventListener("click", () => {
+  suggestionsDismissed = true;
+  document.getElementById("suggestions-panel").style.display = "none";
 });
 
 // "Save as snippet" from last result panel
@@ -317,12 +346,12 @@ document.getElementById("save-result-snippet-btn").addEventListener("click", () 
   const text = appState.lastCleaned;
   if (!text) return;
   openSnippetModal("", text);
-  // Switch to snippets page so user can see it was saved
 });
 
 // ── File Transcription page ────────────────────────────────────────────────
-let txFilePath = "";
-let txFilename = "";
+let txFilePath  = "";
+let txFilename  = "";
+let txResults   = [];    // {filename, text, wordCount, duration}
 
 const TX_STEPS = ["pick", "ready", "progress", "done", "error"];
 function txShow(step) {
@@ -332,7 +361,7 @@ function txShow(step) {
   });
 }
 
-async function pickFile() {
+async function pickFile(addMode = false) {
   if (!hasApi()) return;
   const result = await window.pywebview.api.open_file_dialog();
   if (result && result.path) {
@@ -340,6 +369,9 @@ async function pickFile() {
     txFilename = result.filename;
     document.getElementById("ready-filename").textContent = txFilename;
     txShow("ready");
+  } else if (addMode && txResults.length > 0) {
+    // User cancelled picker while in "add" mode — go back to done
+    txShow("done");
   }
 }
 
@@ -350,12 +382,9 @@ async function runTranscription() {
   document.getElementById("progress-pct").textContent = "0%";
   document.getElementById("live-transcript").textContent = "Warming up…";
   txShow("progress");
-
-  // Fire-and-forget — progress arrives via __koeTranscribeProgress
   await window.pywebview.api.start_file_transcription(txFilePath);
 }
 
-// Python pushes progress here as text appears segment by segment
 window.__koeTranscribeProgress = function(data) {
   if (data.error) {
     document.getElementById("tx-error-text").textContent = data.error;
@@ -363,7 +392,6 @@ window.__koeTranscribeProgress = function(data) {
     return;
   }
   if (!data.done) {
-    // Live preview update
     const pct = Math.round((data.progress || 0) * 100);
     document.getElementById("progress-bar").style.width = pct + "%";
     document.getElementById("progress-pct").textContent = pct + "%";
@@ -372,39 +400,78 @@ window.__koeTranscribeProgress = function(data) {
     }
     return;
   }
-  // Finished
+  // Transcription complete — push to results list
   const text = data.text || data.partialText || "";
-  document.getElementById("transcript-output").textContent = text;
-  document.getElementById("transcript-words").textContent  =
-    data.wordCount ? `${data.wordCount} words` : (text ? `${text.split(/\s+/).length} words` : "");
-  document.getElementById("transcript-duration").textContent =
-    data.duration ? `${data.duration}s to transcribe` : "";
-  document.getElementById("transcript-file").textContent = data.filename || txFilename;
+  txResults.push({
+    filename:  data.filename || txFilename,
+    text,
+    wordCount: data.wordCount || text.split(/\s+/).filter(Boolean).length,
+    duration:  data.duration  || null,
+  });
+  renderTxDone();
   txShow("done");
 };
 
-document.getElementById("browse-btn").addEventListener("click", pickFile);
-document.getElementById("change-file-btn").addEventListener("click", pickFile);
+function renderTxDone() {
+  const list = document.getElementById("tx-transcript-list");
+  const countEl = document.getElementById("tx-file-count");
+  countEl.textContent = txResults.length > 1 ? `(${txResults.length} files)` : "";
+  list.innerHTML = "";
+  txResults.forEach((r, idx) => {
+    const block = document.createElement("div");
+    block.className = "tx-result-block";
+    block.innerHTML = `
+      <div class="tx-result-header">
+        <span class="tx-result-filename">${esc(r.filename)}</span>
+        <div class="tx-result-meta">
+          ${r.wordCount ? `<span class="chip">${r.wordCount} words</span>` : ""}
+          ${r.duration  ? `<span class="chip">${r.duration}s</span>` : ""}
+        </div>
+        <button class="snippet-action-btn tx-result-remove" data-idx="${idx}" title="Remove">
+          <svg viewBox="0 0 12 12" fill="none">
+            <path d="M2 2l8 8M10 2L2 10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
+      <p class="tx-result-text">${esc(r.text)}</p>
+    `;
+    block.querySelector(".tx-result-remove").addEventListener("click", e => {
+      const i = parseInt(e.currentTarget.dataset.idx, 10);
+      txResults.splice(i, 1);
+      if (txResults.length === 0) {
+        txFilePath = "";
+        txFilename = "";
+        txShow("pick");
+      } else {
+        renderTxDone();
+      }
+    });
+    list.appendChild(block);
+    // Separator between files
+    if (idx < txResults.length - 1) {
+      const sep = document.createElement("div");
+      sep.className = "tx-result-sep";
+      list.appendChild(sep);
+    }
+  });
+}
+
+document.getElementById("browse-btn").addEventListener("click", () => pickFile(false));
+document.getElementById("change-file-btn").addEventListener("click", () => pickFile(false));
 document.getElementById("transcribe-btn").addEventListener("click", runTranscription);
 
-document.getElementById("copy-transcript-btn").addEventListener("click", () => {
-  const text = document.getElementById("transcript-output").textContent;
-  if (!text) return;
-  if (hasApi()) window.pywebview.api.copy_text(text);
-  else navigator.clipboard?.writeText(text);
+document.getElementById("copy-all-btn").addEventListener("click", () => {
+  const all = txResults.map(r => `[${r.filename}]\n${r.text}`).join("\n\n---\n\n");
+  if (hasApi()) window.pywebview.api.copy_text(all);
+  else navigator.clipboard?.writeText(all);
 });
 
-document.getElementById("clear-transcript-btn").addEventListener("click", () => {
-  document.getElementById("transcript-output").textContent = "";
-  document.getElementById("transcript-words").textContent  = "";
-  document.getElementById("transcript-duration").textContent = "";
-  document.getElementById("transcript-file").textContent  = "";
-  // Stay on done page — user can hit "New file" to start over
-});
+document.getElementById("add-file-btn").addEventListener("click", () => pickFile(true));
 
-document.getElementById("new-transcription-btn").addEventListener("click", () => {
-  txFilePath = "";
-  txFilename = "";
+document.getElementById("clear-all-btn").addEventListener("click", () => {
+  txResults   = [];
+  txFilePath  = "";
+  txFilename  = "";
   txShow("pick");
 });
 
@@ -414,7 +481,7 @@ document.getElementById("retry-transcription-btn").addEventListener("click", () 
   txShow("pick");
 });
 
-// Drag-and-drop — trigger native file picker since we can't read paths from DnD
+// Drag-and-drop
 const dropzone = document.getElementById("file-dropzone");
 if (dropzone) {
   dropzone.addEventListener("dragover", e => { e.preventDefault(); dropzone.classList.add("drag-over"); });
@@ -422,7 +489,7 @@ if (dropzone) {
   dropzone.addEventListener("drop", async e => {
     e.preventDefault();
     dropzone.classList.remove("drag-over");
-    await pickFile();
+    await pickFile(false);
   });
 }
 

@@ -74,6 +74,7 @@ class KoeApp:
             self._clear_history,
             on_get_snippets_data=self._get_snippets_data,
             on_add_snippet=self._add_snippet,
+            on_edit_snippet=self._edit_snippet,
             on_delete_snippet=self._delete_snippet,
             on_transcribe_file=self._transcribe_file_path,
         )
@@ -205,28 +206,6 @@ class KoeApp:
                 self._last_delivery = f"Snippet saved: \"{trigger}\""
                 self._safe_set_overlay_state(OverlayState.HIDDEN)
                 self._update_tray_icon("idle")
-                return
-
-            # Check for snippet match before cleanup
-            snippet_expansion = self.snippets.match(text)
-            if snippet_expansion is not None:
-                logger.info("Snippet matched: %r → %r", text, snippet_expansion[:40])
-                text = snippet_expansion
-                self._last_cleaned = text
-                # Deliver directly — skip cleanup
-                delivery = self.output.deliver(text, self._target_window)
-                if self.config.ui.sound_feedback and delivery.delivered:
-                    sounds.play_deliver()
-                if delivery.delivered:
-                    self._set_status("Written and copied" if delivery.copied else "Typed")
-                    self._last_delivery = "Snippet expanded"
-                    from datetime import datetime as _dt
-                    self._history.append({"text": text, "time": _dt.now().strftime("%H:%M")})
-                    if len(self._history) > 20:
-                        self._history = self._history[-20:]
-                else:
-                    self._set_status("Write failed")
-                    self._last_delivery = "Write failed"
                 return
 
             exe   = self._target_window.exe   if self._target_window else None
@@ -448,6 +427,14 @@ class KoeApp:
             "snippets": self.snippets.all(),
             "suggestions": self.snippets.suggest(list(self._history)),
         }
+
+    def _edit_snippet(self, original_trigger: str, trigger: str, expansion: str) -> dict:
+        """Edit a snippet, handling trigger rename (delete old, add new)."""
+        orig = original_trigger.strip().lower()
+        if orig != trigger.strip().lower():
+            self.snippets.delete(orig)
+        self.snippets.add(trigger, expansion)
+        return self._get_snippets_data()
 
     def _add_snippet(self, trigger: str, expansion: str) -> dict:
         """Add a snippet and return updated data."""

@@ -80,6 +80,10 @@ class _SettingsBridge:
         """Add or update a snippet."""
         return self._owner.add_snippet(trigger, expansion)
 
+    def edit_snippet(self, original_trigger: str, trigger: str, expansion: str) -> dict:
+        """Edit an existing snippet (handles trigger rename)."""
+        return self._owner.edit_snippet(original_trigger, trigger, expansion)
+
     def delete_snippet(self, trigger: str) -> dict:
         """Delete a snippet by trigger."""
         return self._owner.delete_snippet(trigger)
@@ -106,6 +110,7 @@ class SettingsWindow:
         on_clear_history: Callable[[], dict] | None = None,
         on_get_snippets_data: Callable[[], dict] | None = None,
         on_add_snippet: Callable[[str, str], dict] | None = None,
+        on_edit_snippet: Callable[[str, str, str], dict] | None = None,
         on_delete_snippet: Callable[[str], dict] | None = None,
         on_transcribe_file: Callable[[str], dict] | None = None,
     ):
@@ -117,6 +122,7 @@ class SettingsWindow:
         self._on_clear_history = on_clear_history
         self._on_get_snippets_data = on_get_snippets_data
         self._on_add_snippet = on_add_snippet
+        self._on_edit_snippet = on_edit_snippet
         self._on_delete_snippet = on_delete_snippet
         self._on_transcribe_file = on_transcribe_file
 
@@ -343,6 +349,12 @@ class SettingsWindow:
         """Add or update a snippet and return updated data."""
         if self._on_add_snippet:
             return self._on_add_snippet(trigger, expansion)
+        return self.get_snippets_data()
+
+    def edit_snippet(self, original_trigger: str, trigger: str, expansion: str) -> dict:
+        """Edit a snippet (handles trigger rename) and return updated data."""
+        if self._on_edit_snippet:
+            return self._on_edit_snippet(original_trigger, trigger, expansion)
         return self.get_snippets_data()
 
     def delete_snippet(self, trigger: str) -> dict:

@@ -170,6 +170,9 @@
         <div class="panel" id="suggestions-panel" style="display:none">
           <div class="panel-head">
             <span class="panel-label">Suggested from your history</span>
+            <button class="btn-ghost btn-icon" id="dismiss-suggestions-btn" title="Dismiss suggestions">
+              <svg viewBox="0 0 12 12" fill="none"><path d="M2 2l8 8M10 2L2 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            </button>
           </div>
           <div id="suggestions-list" class="snippets-grid"></div>
         </div>
@@ -254,23 +257,18 @@
           </div>
         </div>
 
-        <!-- Step 4: Done -->
+        <!-- Step 4: Done — transcript list (one entry per file) -->
         <div class="tx-step is-hidden" id="tx-step-done">
           <div class="panel">
             <div class="panel-head">
-              <span class="panel-label">Transcript</span>
+              <span class="panel-label">Transcripts <span id="tx-file-count" class="panel-count"></span></span>
               <div class="panel-actions">
-                <button class="btn-ghost" id="copy-transcript-btn">Copy</button>
-                <button class="btn-ghost" id="clear-transcript-btn">Clear</button>
-                <button class="btn-ghost" id="new-transcription-btn">New file</button>
+                <button class="btn-ghost" id="copy-all-btn">Copy all</button>
+                <button class="btn-ghost" id="add-file-btn">+ Add file</button>
+                <button class="btn-ghost" id="clear-all-btn">Clear all</button>
               </div>
             </div>
-            <p class="result-body has-content" id="transcript-output"></p>
-            <div class="result-chips" id="transcript-chips">
-              <span class="chip" id="transcript-words"></span>
-              <span class="chip" id="transcript-duration"></span>
-              <span class="chip" id="transcript-file"></span>
-            </div>
+            <div id="tx-transcript-list"></div>
           </div>
         </div>
 
@@ -300,12 +298,13 @@
     </div>
   </div>
 
-  <!-- Add / Save snippet modal -->
+  <!-- Add / Edit snippet modal -->
   <div class="sheet is-hidden" id="snippet-modal" aria-hidden="true">
     <div class="sheet-scrim" id="snippet-modal-backdrop"></div>
     <div class="sheet-panel sheet-panel--wide">
       <p class="sheet-eyebrow">Snippet</p>
       <h3 class="sheet-title" id="snippet-modal-title">Add snippet</h3>
+      <input type="hidden" id="snippet-original-trigger">
       <div class="form-group">
         <label class="form-label">Trigger phrase <span class="form-hint">Say this to expand</span></label>
         <input class="form-input" id="snippet-trigger-input" type="text" placeholder="e.g. my email" autocomplete="off" spellcheck="false">

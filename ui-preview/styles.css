@@ -690,8 +690,17 @@ html, body {
   min-width: 0;
 }
 
-.snippet-delete-btn {
+/* Snippet row actions (edit + delete) */
+.snippet-row-actions {
+  display: flex;
+  gap: 4px;
   flex: 0 0 auto;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.snippet-row:hover .snippet-row-actions { opacity: 1; }
+
+.snippet-action-btn {
   width: 26px; height: 26px;
   border-radius: 6px;
   border: 1px solid transparent;
@@ -699,12 +708,18 @@ html, body {
   color: var(--text-3);
   cursor: pointer;
   display: flex; align-items: center; justify-content: center;
-  opacity: 0;
-  transition: opacity 0.12s, background 0.12s, color 0.12s, border-color 0.12s;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
 }
-.snippet-row:hover .snippet-delete-btn { opacity: 1; }
-.snippet-delete-btn:hover { background: rgba(255,60,60,0.12); color: #ff6060; border-color: rgba(255,60,60,0.2); }
-.snippet-delete-btn svg { width: 10px; height: 10px; }
+.snippet-action-btn:hover { background: var(--surface-hi); color: var(--text); border-color: var(--border); }
+.snippet-action-btn--delete:hover { background: rgba(255,60,60,0.12); color: #ff6060; border-color: rgba(255,60,60,0.2); }
+.snippet-action-btn svg { width: 10px; height: 10px; }
+
+/* btn-icon variant for small icon-only ghost buttons */
+.btn-icon {
+  width: 26px; height: 26px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.btn-icon svg { width: 10px; height: 10px; }
 
 /* ── Empty state ─────────────────────────────────────────────────────────── */
 .empty-state {
@@ -901,6 +916,53 @@ html, body {
   font-size: 13px;
   color: rgba(255, 100, 80, 0.85);
   line-height: 1.5;
+}
+
+/* ── Transcript result blocks (multi-file) ───────────────────────────────── */
+.tx-result-block { padding: 8px 0; }
+
+.tx-result-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.tx-result-filename {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-2);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tx-result-meta {
+  display: flex;
+  gap: 5px;
+  flex: 0 0 auto;
+}
+
+.tx-result-remove {
+  flex: 0 0 auto;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.tx-result-block:hover .tx-result-remove { opacity: 1; }
+
+.tx-result-text {
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.tx-result-sep {
+  height: 1px;
+  background: var(--border);
+  margin: 12px 0;
 }
 
 /* ── History extras ──────────────────────────────────────────────────────── */
