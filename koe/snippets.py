@@ -95,12 +95,13 @@ class SnippetStore:
         text_lower = text.lower()
         for trigger, expansion in self._snippets.items():
             # Check trigger appears as a word (not inside another word)
-            idx = text_lower.find(trigger)
+            trigger_lower = trigger.lower()
+            idx = text_lower.find(trigger_lower)
             if idx == -1:
                 continue
             # Boundary check: char before and after must not be alphanumeric
             before_ok = idx == 0 or not text_lower[idx - 1].isalnum()
-            after_idx = idx + len(trigger)
+            after_idx = idx + len(trigger_lower)
             after_ok  = after_idx >= len(text_lower) or not text_lower[after_idx].isalnum()
             if before_ok and after_ok:
                 matches.append((trigger, expansion))

@@ -460,8 +460,16 @@ class KoeApp:
         import keyboard as _kb
 
         try:
-            # Let hotkey modifier keys (Alt+Shift) fully release first
-            time.sleep(0.08)
+            # Release the hotkey modifier keys (Alt + Shift) so they don't
+            # ride along with the Ctrl+C we're about to send.
+            # Without this, the OS sees Ctrl+Alt+Shift+C — not a copy shortcut.
+            for _mod in ("left alt", "right alt", "left shift", "right shift",
+                         "alt", "shift"):
+                try:
+                    _kb.release(_mod)
+                except Exception:
+                    pass
+            time.sleep(0.06)
 
             # Save and sentinel-clear clipboard
             old_clip = pyperclip.paste()
