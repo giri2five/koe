@@ -21,7 +21,6 @@ from koe.hotkey import HotkeyListener
 from koe.output import OutputEngine, OutputMode, WindowTarget
 from koe.overlay import Overlay, OverlayState
 from koe.settings_window import SettingsWindow
-from koe.snippet_prompt import SnippetPrompt
 from koe.snippets import SnippetStore
 from koe.transcriber import Transcriber
 
@@ -47,7 +46,6 @@ class KoeApp:
         self.transcriber = Transcriber(self.config.transcription)
         self.cleaner = TextCleaner(self.config.cleanup)
         self.snippets = SnippetStore()
-        self.snippet_prompt = SnippetPrompt()
         self.output = OutputEngine(self.config.output)
         sounds.set_output_device(self.config.audio.output_device)
 

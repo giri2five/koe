@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "koe"
-version = "0.2.0"
+version = "0.4.4"
 description = "Free, offline, privacy-first voice-to-text for Windows"
 readme = "README.md"
 license = {text = "MIT"}

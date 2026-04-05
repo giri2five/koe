@@ -21,11 +21,15 @@ env/
 .uv-python/
 .pip-cache/
 
-# IDE
+# IDE / Claude Code
 .vscode/
 .idea/
 *.swp
 *.swo
+.claude/
+
+# Release zips (built artifacts, not source-controlled)
+*.zip
 
 # OS
 .DS_Store
