@@ -143,7 +143,22 @@ def main():
 
     from koe.app import KoeApp
 
+    _first_run = not (Path.home() / ".koe" / "config.toml").exists()
     app = KoeApp()
+    if _first_run:
+        import threading as _t
+        import time as _time
+        def _notify():
+            _time.sleep(2)  # wait for tray icon to appear
+            try:
+                if app._tray_icon:
+                    app._tray_icon.notify(
+                        "Hold Alt + K to start speaking. Text appears in any app.",
+                        "Koe is ready"
+                    )
+            except Exception:
+                pass
+        _t.Thread(target=_notify, daemon=True, name="koe-onboard").start()
     try:
         app.run()
     except KeyboardInterrupt:

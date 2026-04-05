@@ -16,6 +16,7 @@ import re
 from typing import Optional
 
 from koe.config import CleanupConfig
+from koe.dictionary import PersonalDictionary
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +55,7 @@ class TextCleaner:
     def __init__(self, config: CleanupConfig):
         self.config = config
         self._llm = None
+        self._dictionary = PersonalDictionary()
 
     def clean(self, text: str) -> str:
         """Clean up transcribed text.
@@ -120,8 +122,7 @@ class TextCleaner:
         text = text.strip()
         text = self._format_structured_speech(text)
 
-        if text != original:
-            logger.debug(f"Cleaned: '{original}' -> '{text}'")
+        text = self._dictionary.apply(text)
 
         return text
 
@@ -211,7 +212,7 @@ class TextCleaner:
                 logger.warning("LLM output length suspicious, falling back to rules")
                 return self._clean_with_rules(text)
 
-            return cleaned
+            return self._dictionary.apply(cleaned)
         except Exception as e:
             logger.warning(f"LLM cleanup failed ({e}), falling back to rules")
             return self._clean_with_rules(text)

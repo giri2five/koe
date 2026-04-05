@@ -105,7 +105,7 @@ class OutputEngine:
         result.copied = True
         self._wait_for_modifiers_release()
         self._release_modifier_keys()
-        time.sleep(0.05)
+        time.sleep(0.12)   # give app time to process hotkey-up before Ctrl+V
 
         self._log_focus_change("both mode", target_hwnd)
 
@@ -152,7 +152,7 @@ class OutputEngine:
         result.copied = True
         self._wait_for_modifiers_release()
         self._release_modifier_keys()
-        time.sleep(0.05)
+        time.sleep(0.12)   # give app time to process hotkey-up before Ctrl+V
         self._log_focus_change("clipboard mode", target_hwnd)
 
         if self._paste_clipboard():
@@ -309,7 +309,7 @@ class OutputEngine:
             return self._keyboard_paste_fallback()
 
     @staticmethod
-    def _wait_for_modifiers_release(timeout: float = 0.35):
+    def _wait_for_modifiers_release(timeout: float = 0.5):
         """Give the hotkey time to fully release before sending output."""
         try:
             import ctypes

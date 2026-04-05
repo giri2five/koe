@@ -8,7 +8,7 @@ Koe is a free, open-source, fully offline voice-to-text tool for Windows. Hold `
 
 ## What it does
 
-- **Hold-to-talk** — Hold `Ctrl+Space` → speak → release → text appears in any app
+- **Hold-to-talk** — Hold `Alt+K` → speak → release → text appears in any app
 - **AI cleanup** — Removes filler words, fixes grammar and punctuation without making your voice sound like a ChatGPT response
 - **Two output modes** — Auto-type into the focused field, or copy to clipboard (toggle with `Ctrl+Shift+Space`)
 - **System tray** — Lightweight, always ready, never in your way
@@ -49,9 +49,8 @@ Koe appears in your system tray. Hold `Ctrl+Space` and start talking.
 
 | Action | What happens |
 |--------|-------------|
-| Hold `Ctrl+Space` | Recording starts |
-| Release `Ctrl+Space` | Recording stops, text is transcribed and delivered |
-| `Ctrl+Shift+Space` | Toggle between type mode and clipboard mode |
+| Hold `Alt+K` | Recording starts |
+| Release `Alt+K` | Recording stops, text is transcribed and delivered |
 | Right-click tray icon | Change model, output mode, open settings, quit |
 
 ---
@@ -62,8 +61,8 @@ Koe creates a config file at `~/.koe/config.toml` on first run. All settings hav
 
 ```toml
 [hotkey]
-trigger = "ctrl+space"
-clipboard_toggle = "ctrl+shift+space"
+trigger = "alt+k"
+clipboard_toggle = ""          # optional, disabled by default
 
 [audio]
 sample_rate = 16000

@@ -64,6 +64,14 @@ class _SettingsBridge:
         """Quit Koe from the web UI."""
         self._owner.request_quit()
 
+    def clear_history(self) -> dict:
+        """Clear dictation history."""
+        return self._owner.clear_history()
+
+    def copy_text(self, text: str) -> dict:
+        """Copy arbitrary text to clipboard (used by history entries)."""
+        return self._owner.copy_text(text)
+
 
 class SettingsWindow:
     """Normal desktop app window for Koe."""
@@ -75,12 +83,14 @@ class SettingsWindow:
         on_copy_last_result: Callable[[], dict],
         on_clear_last_result: Callable[[], dict],
         on_quit: Callable[[], None] | None = None,
+        on_clear_history: Callable[[], dict] | None = None,
     ):
         self._on_save = on_save
         self._get_runtime_state = get_runtime_state
         self._on_copy_last_result = on_copy_last_result
         self._on_clear_last_result = on_clear_last_result
         self._on_quit = on_quit
+        self._on_clear_history = on_clear_history
 
         self._lock = threading.RLock()
         self._window: webview.Window | None = None
@@ -226,6 +236,8 @@ class SettingsWindow:
             "lastCleaned": str(runtime.get("lastCleaned", "")),
             "lastDelivery": str(runtime.get("lastDelivery", "")),
             "lastDuration": str(runtime.get("lastDuration", "")),
+            "history": runtime.get("history", []),
+            "model": config.transcription.model,
         }
 
     def set_input_device(self, value: str) -> dict:

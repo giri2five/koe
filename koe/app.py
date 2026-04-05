@@ -38,6 +38,7 @@ class KoeApp:
         self._last_cleaned = ""
         self._last_delivery = ""
         self._last_duration = ""
+        self._history: list[dict] = []  # last 20 dictations
 
         self.recorder = AudioRecorder(self.config.audio)
         self.transcriber = Transcriber(self.config.transcription)
@@ -65,6 +66,7 @@ class KoeApp:
             self._copy_last_result,
             self._clear_last_result,
             self._quit_from_popup,
+            self._clear_history,
         )
 
     def _safe_set_overlay_state(self, state: OverlayState):
@@ -199,6 +201,11 @@ class KoeApp:
                 delivery.delivered,
                 text[:80],
             )
+            if delivery.delivered:
+                from datetime import datetime as _dt
+                self._history.append({"text": text, "time": _dt.now().strftime("%H:%M")})
+                if len(self._history) > 20:
+                    self._history = self._history[-20:]
 
         except Exception as exc:
             logger.error("Processing failed: %s", exc, exc_info=True)
@@ -328,6 +335,7 @@ class KoeApp:
             "lastCleaned": self._last_cleaned,
             "lastDelivery": self._last_delivery,
             "lastDuration": self._last_duration,
+            "history": list(self._history),
         }
 
     def _copy_last_result(self) -> dict:
@@ -346,6 +354,11 @@ class KoeApp:
         self._last_delivery = "Cleared"
         self._last_duration = ""
         self._set_status("Ready")
+        return self._get_runtime_state()
+
+    def _clear_history(self) -> dict:
+        """Clear dictation history."""
+        self._history.clear()
         return self._get_runtime_state()
 
     def _on_quit(self, icon, item):

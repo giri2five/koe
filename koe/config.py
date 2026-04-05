@@ -41,7 +41,7 @@ class AudioConfig:
 
 @dataclass
 class TranscriptionConfig:
-    model: str = "base.en"
+    model: str = "small.en"
     language: str = "en"
     device: str = "cuda"
     compute_type: str = "int8_float16"

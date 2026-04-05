@@ -1,273 +1,213 @@
-const states = {
-  idle: {
-    kicker: "Ready",
-    title: "Press Alt + K to start dictation.",
-    body: "Speak, release, and Koe writes into the active app while keeping the same text copied.",
-    pill: "Idle",
-    summaryTitle: "Simple capture flow.",
-    resultTitle: "What Koe last heard.",
-    summaryLines: [
-      "Open any text field.",
-      "Hold Alt + K, speak, release.",
-      "Koe writes into the app and keeps the same text copied."
-    ],
-    note: "This window should stay simple: one hotkey, a few working controls, and no fake UI."
-  },
-  listening: {
-    kicker: "Listening",
-    title: "Speak naturally while Koe listens.",
-    body: "The live overlay should stay centered at the top of the screen and react to your voice in real time.",
-    pill: "Listening",
-    summaryTitle: "Capture should feel alive.",
-    resultTitle: "Live capture is active.",
-    summaryLines: [
-      "The waveform should react to your voice, not sit static.",
-      "Whispered speech should still register clearly.",
-      "The app window should stay out of the way while capture is active."
-    ],
-    note: "Listening should feel immediate: top-center capsule, reactive waveform, no visual clutter."
-  },
-  processing: {
-    kicker: "Processing",
-    title: "Turn speech into clean text quickly.",
-    body: "Routes, notes, steps, and casual messages should land in the right shape instead of generic cleanup.",
-    pill: "Processing",
-    summaryTitle: "Processing should stay brief.",
-    resultTitle: "Current result is being shaped.",
-    summaryLines: [
-      "Pause briefly while Koe resolves structure and punctuation.",
-      "Keep casual language casual when the target looks like chat.",
-      "Turn numbered speech into real steps when the content is procedural."
-    ],
-    note: "Processing should feel brief, smart, and invisible once the text lands."
-  },
-  delivered: {
-    kicker: "Delivered",
-    title: "Write into the app and keep it copied.",
-    body: "The active app should receive the text immediately, with the clipboard preserved as a fallback.",
-    pill: "Delivered",
-    summaryTitle: "Delivery should be dependable.",
-    resultTitle: "Latest successful result.",
-    summaryLines: [
-      "Typed or pasted into the focused text field.",
-      "Copied to clipboard at the same time.",
-      "No extra confirmation toast unless something failed."
-    ],
-    note: "Successful delivery should be quiet and obvious, not ceremonial."
-  },
-  error: {
-    kicker: "Problem",
-    title: "Failures should stay inside the app.",
-    body: "When Koe fails, the window should explain what broke instead of opening blank or noisy windows.",
-    pill: "Attention",
-    summaryTitle: "Errors should stay contained.",
-    resultTitle: "Latest failed result.",
-    summaryLines: [
-      "No stray console windows.",
-      "No hidden launcher confusion.",
-      "No dead buttons pretending to work."
-    ],
-    note: "Errors should be short, clear, and recoverable."
-  }
-};
-
-const panel = document.querySelector("#hero-panel");
-const kicker = document.querySelector("#hero-kicker");
-const title = document.querySelector("#hero-title");
-const body = document.querySelector("#hero-body");
-const pill = document.querySelector("#hero-pill");
-const summaryTitle = document.querySelector("#summary-title");
-const resultTitle = document.querySelector("#result-title");
-const draftSurface = document.querySelector("#draft-surface");
-const statusPill = document.querySelector("#status-pill");
-const enginePill = document.querySelector("#engine-pill");
-const hotkeyPill = document.querySelector("#hotkey-pill");
-const microphoneValue = document.querySelector("#microphone-value");
-const outputValue = document.querySelector("#output-value");
-const lastTranscript = document.querySelector("#last-transcript");
-const lastCleaned = document.querySelector("#last-cleaned");
-const lastDelivery = document.querySelector("#last-delivery");
-const lastDuration = document.querySelector("#last-duration");
-const copyResultButton = document.querySelector("#copy-result-button");
-const clearResultButton = document.querySelector("#clear-result-button");
-const overlaySwitch = document.querySelector("#overlay-switch");
-const soundSwitch = document.querySelector("#sound-switch");
-const inspectorNote = document.querySelector("#inspector-note");
-const optionSheet = document.querySelector("#option-sheet");
-const optionBackdrop = document.querySelector("#option-backdrop");
-const optionList = document.querySelector("#option-list");
-const sheetTitle = document.querySelector("#sheet-title");
-const captureButton = document.querySelector("#capture-button");
-const microphoneSetting = document.querySelector("#microphone-setting");
-const outputSetting = document.querySelector("#output-setting");
-const overlaySetting = document.querySelector("#overlay-setting");
-const soundSetting = document.querySelector("#sound-setting");
-
-let currentState = {
+// ── State ─────────────────────────────────────────────────────────────────
+let appState = {
   statusKey: "idle",
+  status: "Ready",
+  hotkey: "ALT + K",
+  microphoneLabel: "System default",
   microphoneOptions: [],
-  outputOptions: []
+  microphone: "",
+  outputModeLabel: "Type and copy",
+  outputOptions: [],
+  outputMode: "both",
+  showOverlay: true,
+  soundFeedback: true,
+  lastTranscript: "",
+  lastCleaned: "",
+  lastDelivery: "",
+  lastDuration: "",
+  model: "small.en",
+  history: []
 };
-let sheetOpen = false;
 
-function hasLiveApi() {
-  return Boolean(window.pywebview && window.pywebview.api);
+// ── Element refs ──────────────────────────────────────────────────────────
+const statusCard    = document.getElementById("status-card");
+const statusPill    = document.getElementById("status-pill");
+const hotkeyPill    = document.getElementById("hotkey-pill");
+const statusLabel   = document.getElementById("status-label");
+const statusSub     = document.getElementById("status-sub");
+const stateBadge    = document.getElementById("state-badge");
+const lastCleaned   = document.getElementById("last-cleaned");
+const lastDelivery  = document.getElementById("last-delivery");
+const lastDuration  = document.getElementById("last-duration");
+const micValue      = document.getElementById("mic-value");
+const outputValue   = document.getElementById("output-value");
+const overlaySwitch = document.getElementById("overlay-switch");
+const soundSwitch   = document.getElementById("sound-switch");
+const modelValue    = document.getElementById("model-value");
+const historyList   = document.getElementById("history-list");
+const sheet         = document.getElementById("option-sheet");
+const sheetBackdrop = document.getElementById("sheet-backdrop");
+const sheetTitle    = document.getElementById("sheet-title");
+const optionList    = document.getElementById("option-list");
+
+// ── State rendering ───────────────────────────────────────────────────────
+const STATE_MAP = {
+  idle:       { label: "Ready",      sub: "Hold Alt + K to speak",    badge: "Idle" },
+  listening:  { label: "Listening",  sub: "Speak naturally\u2026",          badge: "Recording" },
+  processing: { label: "Processing", sub: "Transcribing your speech\u2026", badge: "Processing" },
+  delivered:  { label: "Delivered",  sub: "Text written to your app",  badge: "Done" },
+  error:      { label: "Error",      sub: "Something went wrong",      badge: "Error" },
+};
+
+function applyState(state) {
+  appState = { ...appState, ...state };
+
+  // Derive status key from status string if not provided
+  const key = appState.statusKey || inferKey(appState.status || "");
+  const s   = STATE_MAP[key] || STATE_MAP.idle;
+
+  statusCard.dataset.state = key;
+  statusPill.textContent   = appState.status || s.label;
+  statusLabel.textContent  = s.label;
+  statusSub.textContent    = s.sub;
+  stateBadge.textContent   = s.badge;
+
+  hotkeyPill.innerHTML = (appState.hotkey || "ALT + K")
+    .replace(/\s\+\s/g, "\u00a0+\u00a0");
+
+  micValue.textContent    = appState.microphoneLabel || "System default";
+  outputValue.textContent = appState.outputModeLabel || "Type and copy";
+  modelValue.textContent  = appState.model || "small.en";
+
+  overlaySwitch.classList.toggle("on", Boolean(appState.showOverlay));
+  soundSwitch.classList.toggle("on", Boolean(appState.soundFeedback));
+
+  lastCleaned.textContent  = appState.lastCleaned  || "Nothing yet \u2014 hold Alt + K and speak.";
+  lastDelivery.textContent = appState.lastDelivery || "";
+  lastDuration.textContent = appState.lastDuration || "";
+
+  renderHistory(appState.history || []);
 }
 
-function renderVisualState(stateKey) {
-  const state = states[stateKey] || states.idle;
-  panel.dataset.state = stateKey;
-  kicker.textContent = state.kicker;
-  title.textContent = state.title;
-  body.textContent = state.body;
-  pill.textContent = state.pill;
-  summaryTitle.textContent = state.summaryTitle;
-  resultTitle.textContent = state.resultTitle;
-  inspectorNote.textContent = state.note;
-
-  draftSurface.innerHTML =
-    '<div class="draft-index">01</div>' +
-    state.summaryLines.map((line) => `<p class="draft-line">${line}</p>`).join("");
-}
-
-function applySwitch(element, enabled) {
-  element.classList.toggle("is-on", Boolean(enabled));
-}
-
-function statusToStateKey(statusKey, statusText) {
-  if (statusKey) return statusKey;
-  const lowered = (statusText || "").toLowerCase();
-  if (lowered.includes("listen")) return "listening";
-  if (lowered.includes("process")) return "processing";
-  if (lowered.includes("error") || lowered.includes("fail")) return "error";
-  if (lowered.includes("written") || lowered.includes("typed") || lowered.includes("copied")) return "delivered";
+function inferKey(status) {
+  const s = status.toLowerCase();
+  if (s.includes("listen") || s.includes("recording")) return "listening";
+  if (s.includes("process"))                           return "processing";
+  if (s.includes("error") || s.includes("fail"))      return "error";
+  if (s.includes("written") || s.includes("typed") || s.includes("copied") || s.includes("delivered")) return "delivered";
   return "idle";
 }
 
-function applyRuntimeState(state) {
-  currentState = state;
-  const statusKey = statusToStateKey(state.statusKey, state.status);
-  hotkeyPill.innerHTML = (state.hotkey || "ALT + K").replace(/\s\+\s/g, "&nbsp;+&nbsp;");
-  statusPill.textContent = state.status || "Ready";
-  enginePill.textContent = "On-device";
-  microphoneValue.textContent = state.microphoneLabel || "System default";
-  outputValue.textContent = state.outputModeLabel || "Write into app and keep copied";
-  applySwitch(overlaySwitch, state.showOverlay);
-  applySwitch(soundSwitch, state.soundFeedback);
-  lastTranscript.textContent = state.lastTranscript || "Nothing captured yet.";
-  lastCleaned.textContent = state.lastCleaned || "Nothing delivered yet.";
-  lastDelivery.textContent = state.lastDelivery || "No delivery yet";
-  lastDuration.textContent = state.lastDuration || "0.00s";
-  renderVisualState(statusKey);
+// ── History ────────────────────────────────────────────────────────────────
+function renderHistory(entries) {
+  if (!entries || entries.length === 0) {
+    historyList.innerHTML = '<p class="history-empty">Your recent dictations will appear here.</p>';
+    return;
+  }
+  historyList.innerHTML = "";
+  entries.slice().reverse().forEach(entry => {
+    const el = document.createElement("div");
+    el.className = "history-entry";
+    el.innerHTML = `
+      <span class="history-entry-text" title="${escHtml(entry.text)}">${escHtml(entry.text)}</span>
+      <span class="history-entry-time">${entry.time || ""}</span>
+      <button class="history-copy-btn" data-text="${escHtml(entry.text)}">Copy</button>
+    `;
+    el.querySelector(".history-copy-btn").addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const text = e.target.dataset.text;
+      if (hasApi()) await window.pywebview.api.copy_text(text);
+      else navigator.clipboard?.writeText(text);
+    });
+    historyList.appendChild(el);
+  });
 }
 
-function openOptionSheet(titleText, options, currentValue, onSelect) {
+function escHtml(str) {
+  return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+// ── Option sheet ───────────────────────────────────────────────────────────
+let sheetOpen = false;
+
+function openSheet(title, options, current, onSelect) {
+  sheetTitle.textContent = title;
   optionList.innerHTML = "";
-  sheetTitle.textContent = titleText;
-  options.forEach((option) => {
-    const button = document.createElement("button");
-    button.className = "option-item";
-    button.type = "button";
-    button.textContent = option.label;
-    if (option.value === currentValue) {
-      button.classList.add("is-selected");
-    }
-    button.addEventListener("click", async () => {
-      closeOptionSheet();
-      await onSelect(option.value);
+  options.forEach(opt => {
+    const btn = document.createElement("button");
+    btn.className = "option-item" + (opt.value === current ? " selected" : "");
+    btn.textContent = opt.label;
+    btn.addEventListener("click", async () => {
+      closeSheet();
+      await onSelect(opt.value);
     });
-    optionList.appendChild(button);
+    optionList.appendChild(btn);
   });
   sheetOpen = true;
-  optionSheet.classList.remove("is-hidden");
-  optionSheet.setAttribute("aria-hidden", "false");
+  sheet.classList.remove("is-hidden");
+  sheet.setAttribute("aria-hidden", "false");
 }
 
-function closeOptionSheet() {
+function closeSheet() {
   sheetOpen = false;
-  optionSheet.classList.add("is-hidden");
-  optionSheet.setAttribute("aria-hidden", "true");
+  sheet.classList.add("is-hidden");
+  sheet.setAttribute("aria-hidden", "true");
 }
 
-async function refreshState() {
-  if (!hasLiveApi()) return;
+// ── API bridge ─────────────────────────────────────────────────────────────
+function hasApi() { return Boolean(window.pywebview?.api); }
+
+async function refresh() {
+  if (!hasApi()) return;
   try {
-    const state = await window.pywebview.api.get_state();
-    if (state) applyRuntimeState(state);
-  } catch (error) {
-    console.error(error);
-  }
+    const s = await window.pywebview.api.get_state();
+    if (s) applyState(s);
+  } catch(e) { console.error(e); }
 }
 
-window.__koeApplyState = (state) => {
-  if (state) applyRuntimeState(state);
-};
+window.__koeApplyState = s => { if (s) applyState(s); };
 
-captureButton.addEventListener("click", async () => {
-  if (!hasLiveApi()) return;
-  await window.pywebview.api.hide_window();
+// ── Event wiring ───────────────────────────────────────────────────────────
+document.getElementById("hide-btn").addEventListener("click", async () => {
+  if (hasApi()) await window.pywebview.api.hide_window();
 });
 
-microphoneSetting.addEventListener("click", () => {
-  openOptionSheet(
-    "Microphone",
-    currentState.microphoneOptions || [],
-    currentState.microphone,
-    async (value) => {
-      if (!hasLiveApi()) return;
-      const state = await window.pywebview.api.set_input_device(value);
-      applyRuntimeState(state);
-    }
-  );
+document.getElementById("mic-setting").addEventListener("click", () => {
+  openSheet("Microphone", appState.microphoneOptions || [], appState.microphone, async val => {
+    if (!hasApi()) return;
+    applyState(await window.pywebview.api.set_input_device(val));
+  });
 });
 
-outputSetting.addEventListener("click", () => {
-  openOptionSheet(
-    "Output",
-    currentState.outputOptions || [],
-    currentState.outputMode,
-    async (value) => {
-      if (!hasLiveApi()) return;
-      const state = await window.pywebview.api.set_output_mode(value);
-      applyRuntimeState(state);
-    }
-  );
+document.getElementById("output-setting").addEventListener("click", () => {
+  openSheet("Output mode", appState.outputOptions || [], appState.outputMode, async val => {
+    if (!hasApi()) return;
+    applyState(await window.pywebview.api.set_output_mode(val));
+  });
 });
 
-overlaySetting.addEventListener("click", async () => {
-  if (!hasLiveApi()) return;
-  const state = await window.pywebview.api.set_overlay_enabled(!currentState.showOverlay);
-  applyRuntimeState(state);
+document.getElementById("overlay-toggle").addEventListener("click", async () => {
+  if (!hasApi()) return;
+  applyState(await window.pywebview.api.set_overlay_enabled(!appState.showOverlay));
 });
 
-soundSetting.addEventListener("click", async () => {
-  if (!hasLiveApi()) return;
-  const state = await window.pywebview.api.set_sound_enabled(!currentState.soundFeedback);
-  applyRuntimeState(state);
+document.getElementById("sound-toggle").addEventListener("click", async () => {
+  if (!hasApi()) return;
+  applyState(await window.pywebview.api.set_sound_enabled(!appState.soundFeedback));
 });
 
-copyResultButton.addEventListener("click", async () => {
-  if (!hasLiveApi()) return;
-  const state = await window.pywebview.api.copy_last_result();
-  applyRuntimeState(state);
+document.getElementById("copy-result-btn").addEventListener("click", async () => {
+  if (!hasApi()) return;
+  applyState(await window.pywebview.api.copy_last_result());
 });
 
-clearResultButton.addEventListener("click", async () => {
-  if (!hasLiveApi()) return;
-  const state = await window.pywebview.api.clear_last_result();
-  applyRuntimeState(state);
+document.getElementById("clear-result-btn").addEventListener("click", async () => {
+  if (!hasApi()) return;
+  applyState(await window.pywebview.api.clear_last_result());
 });
 
-optionBackdrop.addEventListener("click", closeOptionSheet);
-window.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && sheetOpen) {
-    closeOptionSheet();
-  }
+document.getElementById("clear-history-btn").addEventListener("click", async () => {
+  if (!hasApi()) return;
+  applyState(await window.pywebview.api.clear_history());
 });
 
-renderVisualState("idle");
+sheetBackdrop.addEventListener("click", closeSheet);
+window.addEventListener("keydown", e => { if (e.key === "Escape" && sheetOpen) closeSheet(); });
 
-if (hasLiveApi()) {
-  refreshState();
-  setInterval(refreshState, 900);
+// ── Init ──────────────────────────────────────────────────────────────────
+applyState({});
+
+if (hasApi()) {
+  refresh();
+  setInterval(refresh, 1000);
 }
