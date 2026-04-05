@@ -446,37 +446,51 @@ class KoeApp:
         self.snippets.delete(trigger)
         return self._get_snippets_data()
 
-    def _expand_snippet_from_selection(self):
-        """Alt+Shift+K: read selected text, find matching snippet, replace in place.
+    def _expand_snippet_from_selection(self, trigger_hwnd: int = 0):
+        """Alt+J: read selected text, find matching snippet, replace in place.
 
         Flow:
-          1. Save clipboard, put sentinel in clipboard
-          2. Send Ctrl+C — copies user's current selection
-          3. Read clipboard — that's the selected text
-          4. Match against snippets (exact or word-boundary)
-          5. If matched, paste expansion in place of the selection
-          6. Restore old clipboard after paste settles
+          1. Wait for Alt to be released
+          2. Restore focus to the window that was active when hotkey fired
+             (Left Alt activates the Windows menu bar, stealing focus)
+          3. Save clipboard, put sentinel in clipboard
+          4. Send Ctrl+C — copies user's current selection
+          5. Read clipboard — that's the selected text
+          6. Match against snippets (exact or word-boundary)
+          7. If matched, paste expansion in place of the selection
+          8. Restore old clipboard after paste settles
         """
         import ctypes as _ct
         import keyboard as _kb
 
         try:
-            # Wait for ALL modifier keys to be physically released before
-            # sending Ctrl+C.  We NEVER send synthetic key-up events —
-            # fake releases corrupt the OS keyboard state for other apps.
-            _VK_ALT   = 0x12   # VK_MENU    — either side
-            _VK_CTRL  = 0x11   # VK_CONTROL — either side
-            _VK_SHIFT = 0x10   # VK_SHIFT   — either side
+            u32 = _ct.windll.user32
 
+            # Wait for Alt to be physically released.
+            # (Left Alt activates Windows menu bars — we must wait for it to
+            # drop before we can safely send Ctrl+C.)
+            _VK_ALT = 0x12   # VK_MENU — either side
             deadline = time.monotonic() + 1.5
             while time.monotonic() < deadline:
-                alt_held   = bool(_ct.windll.user32.GetAsyncKeyState(_VK_ALT)   & 0x8000)
-                ctrl_held  = bool(_ct.windll.user32.GetAsyncKeyState(_VK_CTRL)  & 0x8000)
-                shift_held = bool(_ct.windll.user32.GetAsyncKeyState(_VK_SHIFT) & 0x8000)
-                if not alt_held and not ctrl_held and not shift_held:
+                if not bool(u32.GetAsyncKeyState(_VK_ALT) & 0x8000):
                     break
                 time.sleep(0.02)
-            time.sleep(0.03)   # small extra settle before Ctrl+C
+            time.sleep(0.05)   # small extra settle
+
+            # Restore focus to the window that was active when the hotkey
+            # fired.  Left Alt moves focus to the menu bar; this brings it
+            # back so Ctrl+C copies the correct selection.
+            if trigger_hwnd:
+                # AttachThreadInput lets a background thread set foreground.
+                our_tid    = _ct.windll.kernel32.GetCurrentThreadId()
+                target_tid = u32.GetWindowThreadProcessId(trigger_hwnd, None)
+                if our_tid != target_tid:
+                    u32.AttachThreadInput(our_tid, target_tid, True)
+                u32.SetForegroundWindow(trigger_hwnd)
+                u32.BringWindowToTop(trigger_hwnd)
+                if our_tid != target_tid:
+                    u32.AttachThreadInput(our_tid, target_tid, False)
+                time.sleep(0.08)   # let the window re-activate
 
             # Save and sentinel-clear clipboard
             old_clip = pyperclip.paste()

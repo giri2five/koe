@@ -236,8 +236,12 @@ class HotkeyListener:
 
             if combo_down and not was_down:
                 logger.debug("Expand hotkey fired (poll)")
+                # Capture the focused window RIGHT NOW — before Left Alt's
+                # menu-bar activation can steal focus away from the text.
+                hwnd = ctypes.windll.user32.GetForegroundWindow()
                 threading.Thread(
                     target=self._on_expand_snippet,
+                    args=(hwnd,),
                     daemon=True,
                     name="koe-expand-snippet",
                 ).start()
