@@ -62,6 +62,7 @@ class KoeApp:
             on_record_start=self._on_record_start,
             on_record_stop=self._on_record_stop,
             on_mode_toggle=self._on_mode_toggle,
+            on_expand_snippet=self._expand_snippet_from_selection,
         )
 
         self._processing_lock = threading.Lock()
@@ -248,8 +249,7 @@ class KoeApp:
                 self._history.append({"text": text, "time": _dt.now().strftime("%H:%M")})
                 if len(self._history) > 20:
                     self._history = self._history[-20:]
-                # Check for in-text snippet triggers after delivery
-                self._offer_snippet_replacement(text)
+                # (snippet expansion now via Alt+Shift+K — select text then press hotkey)
 
         except Exception as exc:
             logger.error("Processing failed: %s", exc, exc_info=True)
@@ -446,36 +446,71 @@ class KoeApp:
         self.snippets.delete(trigger)
         return self._get_snippets_data()
 
-    def _offer_snippet_replacement(self, delivered_text: str):
-        """If the delivered text contains a snippet trigger, offer an inline replacement."""
-        matches = self.snippets.find_in_text(delivered_text)
-        if not matches:
-            return
-        trigger, expansion = matches[0]   # offer the first match
+    def _expand_snippet_from_selection(self):
+        """Alt+Shift+K: read selected text, find matching snippet, replace in place.
 
-        def on_accept():
-            """Replace delivered_text in the focused window with the snippet expansion."""
-            import re as _re
-            new_text = _re.sub(_re.escape(trigger), expansion, delivered_text, flags=_re.IGNORECASE)
-            try:
-                import keyboard as _kb
-                import pyperclip as _pc
-                _pc.copy(new_text)
-                # Delete the delivered chars and paste the expansion
-                for _ in range(len(delivered_text)):
-                    _kb.press_and_release('backspace')
-                time.sleep(0.04)
-                _kb.send('ctrl+v')
-                self._last_cleaned = new_text
-                self._set_status(f'Snippet expanded: "{trigger}"')
-                logger.info("Snippet replaced %r → %r", trigger, expansion[:40])
-            except Exception as exc:
-                logger.error("Snippet replacement error: %s", exc)
+        Flow:
+          1. Save clipboard, put sentinel in clipboard
+          2. Send Ctrl+C — copies user's current selection
+          3. Read clipboard — that's the selected text
+          4. Match against snippets (exact or word-boundary)
+          5. If matched, paste expansion in place of the selection
+          6. Restore old clipboard after paste settles
+        """
+        import keyboard as _kb
 
-        def on_dismiss():
-            pass
+        try:
+            # Let hotkey modifier keys (Alt+Shift) fully release first
+            time.sleep(0.08)
 
-        self.snippet_prompt.offer(trigger, expansion, delivered_text, on_accept, on_dismiss)
+            # Save and sentinel-clear clipboard
+            old_clip = pyperclip.paste()
+            _sentinel = "__koe_expand__"
+            pyperclip.copy(_sentinel)
+
+            # Copy selection
+            _kb.send("ctrl+c")
+            time.sleep(0.15)
+
+            selected = pyperclip.paste()
+
+            if not selected or selected == _sentinel:
+                pyperclip.copy(old_clip)
+                return  # nothing was selected
+
+            # Match: try exact match first, then word-boundary scan
+            expansion = self.snippets.match(selected)
+            if expansion is None:
+                matches = self.snippets.find_in_text(selected)
+                if matches:
+                    expansion = matches[0][1]
+
+            if expansion is None:
+                pyperclip.copy(old_clip)
+                label = selected.strip()[:25]
+                self._set_status(f'No snippet for "{label}"')
+                return
+
+            # Paste expansion (replaces the selection)
+            pyperclip.copy(expansion)
+            time.sleep(0.03)
+            _kb.send("ctrl+v")
+
+            trigger = selected.strip()
+            self._set_status("Snippet expanded")
+            logger.info("Snippet expanded: %r → %r", trigger[:40], expansion[:40])
+
+            # Restore old clipboard once paste has settled
+            def _restore():
+                time.sleep(0.5)
+                try:
+                    pyperclip.copy(old_clip)
+                except Exception:
+                    pass
+            threading.Thread(target=_restore, daemon=True).start()
+
+        except Exception as exc:
+            logger.error("Snippet expand error: %s", exc)
 
     def _transcribe_file_path(self, path: str, on_progress=None) -> dict:
         """Transcribe an audio file, streaming progress via on_progress(partial, 0-1)."""

@@ -27,11 +27,13 @@ class HotkeyListener:
         on_record_start: Callable,
         on_record_stop: Callable,
         on_mode_toggle: Callable,
+        on_expand_snippet: Optional[Callable] = None,
     ):
         self.config = config
         self._on_record_start = on_record_start
         self._on_record_stop = on_record_stop
         self._on_mode_toggle = on_mode_toggle
+        self._on_expand_snippet = on_expand_snippet
         self._is_held = False
         self._running = False
         self._thread: Optional[threading.Thread] = None
@@ -96,6 +98,16 @@ class HotkeyListener:
             keyboard.add_hotkey(
                 self.config.clipboard_toggle,
                 self._on_mode_toggle,
+                suppress=True,
+            )
+
+        if self.config.expand_snippet.strip() and self._on_expand_snippet:
+            keyboard.add_hotkey(
+                self.config.expand_snippet,
+                lambda: threading.Thread(
+                    target=self._on_expand_snippet, daemon=True,
+                    name="koe-expand-snippet",
+                ).start(),
                 suppress=True,
             )
 

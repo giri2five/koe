@@ -315,6 +315,7 @@ class SettingsWindow:
             "model": config.transcription.model,
             "snippetCount": runtime.get("snippetCount", 0),
             "snippetsPath": str(runtime.get("snippetsPath", "")),
+            "expandHotkey": self._format_hotkey(config.hotkey.expand_snippet),
         }
 
     def set_input_device(self, value: str) -> dict:

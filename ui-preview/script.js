@@ -85,6 +85,10 @@ function applyState(incoming) {
   if (hotkeyPill) {
     hotkeyPill.textContent = (appState.hotkey || "ALT + K").replace(/\s\+\s/g, "\u00a0+\u00a0");
   }
+  const expandPill = document.getElementById("expand-hotkey-pill");
+  if (expandPill) {
+    expandPill.textContent = (appState.expandHotkey || "ALT + SHIFT + K").replace(/\s\+\s/g, "\u00a0+\u00a0");
+  }
 
   micValue.textContent    = appState.microphoneLabel || "System default";
   outputValue.textContent = appState.outputModeLabel || "Type and copy";
