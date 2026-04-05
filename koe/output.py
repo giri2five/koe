@@ -194,8 +194,10 @@ class OutputEngine:
 
             class INPUT(ctypes.Structure):
                 class _INPUT(ctypes.Union):
-                    _fields_ = [("ki", KEYBDINPUT)]
-
+                    _fields_ = [
+                        ("ki", KEYBDINPUT),
+                        ("_pad", ctypes.c_byte * 32),  # match MOUSEINPUT size on 64-bit
+                    ]
                 _fields_ = [
                     ("type", wintypes.DWORD),
                     ("_input", _INPUT),
@@ -273,8 +275,13 @@ class OutputEngine:
 
             class INPUT(ctypes.Structure):
                 class _INPUT(ctypes.Union):
-                    _fields_ = [("ki", KEYBDINPUT)]
-
+                    # Pad to 32 bytes so the union matches MOUSEINPUT's size
+                    # on 64-bit Windows — without this ctypes.sizeof(INPUT)
+                    # is ~28 instead of 40 and SendInput returns 0.
+                    _fields_ = [
+                        ("ki", KEYBDINPUT),
+                        ("_pad", ctypes.c_byte * 32),
+                    ]
                 _fields_ = [
                     ("type", wintypes.DWORD),
                     ("_input", _INPUT),

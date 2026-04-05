@@ -2,17 +2,19 @@
 
 **Your voice, your words. Nothing leaves your machine.**
 
-Koe is a free, open-source, fully offline voice-to-text tool for Windows. Hold `Ctrl+Space`, speak naturally, release — clean text appears wherever your cursor is. No account, no cloud, no subscription.
+Koe is a free, open-source, fully offline voice-to-text tool for Windows. Hold `Alt+K`, speak naturally, release — clean text appears wherever your cursor is. No account, no cloud, no subscription.
 
 ---
 
 ## What it does
 
 - **Hold-to-talk** — Hold `Alt+K` → speak → release → text appears in any app
-- **AI cleanup** — Removes filler words, fixes grammar and punctuation without making your voice sound like a ChatGPT response
-- **Two output modes** — Auto-type into the focused field, or copy to clipboard (toggle with `Ctrl+Shift+Space`)
+- **Smart cleanup** — Removes filler words and fixes punctuation without making your voice sound like a ChatGPT response
+- **Three output modes** — Write into the focused app and keep copied, paste from clipboard, or type directly
+- **Recording overlay** — Minimal animated waveform pill shows when Koe is listening or processing
+- **Transcription history** — Every dictation is saved in the UI for easy copy/reuse
 - **System tray** — Lightweight, always ready, never in your way
-- **Fully offline** — Whisper STT runs locally. Zero network calls. Zero telemetry.
+- **Fully offline** — Whisper STT runs locally. Zero network calls after first model download. Zero telemetry.
 - **GPU-accelerated** — Uses your NVIDIA GPU during transcription, then releases VRAM immediately
 
 ---
@@ -22,7 +24,7 @@ Koe is a free, open-source, fully offline voice-to-text tool for Windows. Hold `
 - Windows 10 or 11
 - Python 3.10+
 - NVIDIA GPU with CUDA (recommended) — CPU works too, just slower
-- ~2 GB disk space for models (downloaded once on first run)
+- ~500 MB disk space for the default model (downloaded once on first run)
 
 ---
 
@@ -35,13 +37,13 @@ cd koe
 pip install -e .
 ```
 
-That's it. On first launch, Koe downloads the Whisper model (~150 MB for `base`). Subsequent launches are instant.
+On first launch Koe downloads the Whisper model (~500 MB for `small.en`). Subsequent launches are instant.
 
 ```bash
 koe
 ```
 
-Koe appears in your system tray. Hold `Ctrl+Space` and start talking.
+Koe opens a settings window and appears in your system tray. Hold `Alt+K` and start talking.
 
 ---
 
@@ -49,40 +51,58 @@ Koe appears in your system tray. Hold `Ctrl+Space` and start talking.
 
 | Action | What happens |
 |--------|-------------|
-| Hold `Alt+K` | Recording starts |
+| Hold `Alt+K` | Recording starts, overlay appears |
 | Release `Alt+K` | Recording stops, text is transcribed and delivered |
-| Right-click tray icon | Change model, output mode, open settings, quit |
+| Click X on window | Hides to system tray |
+| Tray → Open Koe | Brings the settings window back |
+| Right-click tray icon | Open Koe / Quit |
+
+---
+
+## Settings window
+
+The settings window gives you full control without touching a config file:
+
+- **Microphone** — pick your input device from a dropdown
+- **Output mode** — choose how text is delivered to your app
+- **Recording overlay** — toggle the animated waveform pill
+- **Sound cues** — toggle audio feedback on record start/stop
+- **History** — browse and copy every recent dictation
+- **Last result** — copy or clear the most recent transcription
 
 ---
 
 ## Configuration
 
-Koe creates a config file at `~/.koe/config.toml` on first run. All settings have sane defaults — you don't need to touch it.
+Koe stores config at `~/.koe/config.toml`. The settings window covers the common options — only edit this file for advanced tweaks.
 
 ```toml
 [hotkey]
 trigger = "alt+k"
-clipboard_toggle = ""          # optional, disabled by default
+clipboard_toggle = ""          # optional secondary hotkey, disabled by default
 
 [audio]
 sample_rate = 16000
 silence_threshold = 0.01
-device = "default"
+device = "system_default"
+min_duration = 0.3             # ignore taps shorter than this (seconds)
+max_duration = 120.0           # safety cutoff
 
 [transcription]
-model = "base"        # tiny | base | small | medium | large-v3
+model = "small.en"    # tiny | base | base.en | small | small.en | medium | large-v3
 language = "en"       # or "auto" for detection
 device = "cuda"       # cuda | cpu
+compute_type = "int8_float16"
+beam_size = 5
 
 [cleanup]
 enabled = true
-mode = "rules"        # "rules" (fast) | "llm" (local LLM, more accurate)
+mode = "rules"         # "rules" (fast, no extra model) | "llm" (local LLM)
 remove_fillers = true
 fix_punctuation = true
-fix_grammar = true
 
 [output]
-default_mode = "type" # "type" | "clipboard"
+default_mode = "both"  # "both" | "clipboard" | "type"
 
 [ui]
 show_overlay = true
@@ -94,12 +114,12 @@ sound_feedback = true
 | Model | Size | Speed | Accuracy |
 |-------|------|-------|----------|
 | `tiny` | ~75 MB | Fastest | Basic |
-| `base` | ~150 MB | Fast | Good (default) |
-| `small` | ~500 MB | Medium | Better |
+| `base` / `base.en` | ~150 MB | Fast | Good |
+| `small` / `small.en` | ~500 MB | Medium | Better **(default)** |
 | `medium` | ~1.5 GB | Slow | Great |
 | `large-v3` | ~3 GB | Slowest | Best |
 
-Pick based on your GPU/CPU. `base` is the right default for most people.
+English-only models (`base.en`, `small.en`) are faster and more accurate if you only dictate in English.
 
 ---
 
@@ -109,7 +129,7 @@ Koe cleans up your speech without making it sound like AI wrote it.
 
 **What it removes/fixes:**
 - Filler words: *um, uh, like, you know, basically, I mean*
-- Missing punctuation and capitalization
+- Missing punctuation and capitalisation
 - Obvious grammar mistakes
 
 **What it leaves alone:**
@@ -118,39 +138,39 @@ Koe cleans up your speech without making it sound like AI wrote it.
 - Anything that sounds like *you*
 
 Two modes:
-- **Rules mode** (default) — Fast regex-based cleanup. No extra model needed. Handles 90% of cases.
+- **Rules mode** (default) — Fast regex-based cleanup. No extra model needed.
 - **LLM mode** — Uses a small local LLM via `llama-cpp-python` for smarter cleanup. Install with `pip install koe[llm]`.
 
 ---
 
 ## Privacy
 
-Koe makes **zero network requests**. Ever.
+Koe makes **zero network requests** after the model is downloaded.
 
 - All processing happens on your machine
 - No telemetry, no analytics, no crash reporting
 - No account required
 - Models are cached locally after the first download
 - Audio is discarded immediately after transcription
-- No transcription logs are kept
-
-You can verify this yourself — Koe has no network-related imports.
 
 ---
 
 ## Roadmap
 
 - [x] Hold-to-talk → transcribe → deliver pipeline
+- [x] Settings window UI
 - [x] System tray with state indicators
 - [x] Rule-based text cleanup
 - [x] TOML configuration
-- [x] Recording overlay indicator
+- [x] Recording overlay indicator (animated waveform pill)
 - [x] Sound feedback on record start/stop
-- [ ] LLM-based cleanup mode
-- [ ] Whisper model auto-selection based on VRAM
-- [ ] Custom vocabulary / personal dictionary
-- [ ] Streaming transcription (live preview while speaking)
-- [ ] Multi-language support
+- [x] Transcription history
+- [x] Custom app icon
+- [ ] LLM cleanup toggle in UI
+- [ ] Voice snippets — trigger phrases expand to templates
+- [ ] File transcription — `koe --file audio.mp3`
+- [ ] Context-aware formatting — detect active app, adjust style
+- [ ] Whisper model selector in UI
 - [ ] One-click Windows installer (.exe)
 
 ---

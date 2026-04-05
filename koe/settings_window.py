@@ -100,6 +100,7 @@ class SettingsWindow:
         self._loaded = threading.Event()
         self._ui_started = False
         self._show_requested = True
+        self._is_hidden = True  # track whether window is currently hidden
 
         repo_root = Path(__file__).resolve().parents[1]
         self._index_path = repo_root / "ui-preview" / "index.html"
@@ -115,6 +116,13 @@ class SettingsWindow:
             self._loaded.clear()
             self._show_requested = True
 
+        # Tell Windows to treat this process as "Koe", not "python.exe".
+        # This gives Koe its own taskbar group and lets WM_SETICON stick.
+        try:
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("Koe.VoiceApp.1")
+        except Exception:
+            pass
+
         try:
             self._window = webview.create_window(
                 "Koe",
@@ -125,7 +133,6 @@ class SettingsWindow:
                 min_size=(1024, 700),
                 background_color="#050505",
                 text_select=False,
-                hidden=True,
             )
             self._window.events.closing += self._on_closing
             self._window.events.loaded += self._on_loaded
@@ -151,18 +158,27 @@ class SettingsWindow:
         if config is not None:
             self.sync_config(config)
         self._show_requested = True
-        if self._window is None or not self._loaded.is_set():
+        logger.info("show() called — window=%s loaded=%s", self._window is not None, self._loaded.is_set())
+        if self._window is None:
+            return
+        if not self._loaded.is_set():
+            # Page still loading — it will show itself via _on_loaded
             return
         try:
-            self._restore_geometry()
-            self._window.restore()
-            self._window.show()
+            # Only reposition if hidden — don't un-maximize an already-visible window
+            if self._is_hidden:
+                self._restore_geometry()
+                self._window.show()
+                self._is_hidden = False
+            self._raise_to_front()
+            logger.info("Koe window raised to front")
         except Exception:
             logger.exception("Failed to show Koe window")
 
     def hide(self):
         """Hide the app window while keeping Koe alive."""
         self._show_requested = False
+        self._is_hidden = True
         if self._window is not None:
             try:
                 self._window.hide()
@@ -178,6 +194,16 @@ class SettingsWindow:
                 self._window.destroy()
             except Exception:
                 logger.exception("Failed to destroy Koe window")
+        # If the Qt event loop doesn't exit within 3 s (e.g. called from a
+        # non-Qt thread while Qt is blocked), force the process out so the
+        # single-instance mutex is released and restarts work cleanly.
+        import threading, os
+        def _force_exit():
+            import time as _t
+            _t.sleep(3.0)
+            logger.warning("Koe shutdown timed out — forcing exit")
+            os._exit(0)
+        threading.Thread(target=_force_exit, daemon=True, name="koe-exit-watchdog").start()
 
     def request_quit(self):
         """Quit the whole app from a JS callback."""
@@ -193,6 +219,21 @@ class SettingsWindow:
     def clear_last_result(self) -> dict:
         """Clear the latest runtime result through the app callback."""
         return self._on_clear_last_result()
+
+    def clear_history(self) -> dict:
+        """Clear dictation history through the app callback."""
+        if self._on_clear_history is not None:
+            return self._on_clear_history()
+        return self.get_state()
+
+    def copy_text(self, text: str) -> dict:
+        """Copy arbitrary text to clipboard (used by history entries)."""
+        import pyperclip
+        try:
+            pyperclip.copy(str(text))
+        except Exception:
+            pass
+        return self.get_state()
 
     def sync_config(self, config: KoeConfig):
         """Update the web UI snapshot with the latest config."""
@@ -284,15 +325,65 @@ class SettingsWindow:
             logger.debug("Koe UI state push skipped", exc_info=True)
 
     def _on_loaded(self, window: webview.Window):
+        logger.info("Koe UI loaded")
         self._loaded.set()
-        if self._show_requested:
-            self._restore_geometry()
-            try:
-                window.restore()
-                window.show()
-            except Exception:
-                logger.debug("Initial Koe window restore skipped", exc_info=True)
+        self._restore_geometry()
+        self._is_hidden = False
+        threading.Thread(target=self._force_show_loop, daemon=True, name="koe-show").start()
         self._push_state()
+
+    def _force_show_loop(self):
+        """Show the Koe window via a subprocess (EnumWindows hangs inside the Qt process)."""
+        import time, subprocess
+        logger.info("force_show_loop: waiting for Qt to settle")
+        time.sleep(1.0)
+        # Let the subprocess find the HWND and call ShowWindow itself.
+        ps = r"""
+$sig = @'
+using System; using System.Runtime.InteropServices; using System.Text;
+public class W {
+    [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc f, IntPtr l);
+    [DllImport("user32.dll")] public static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
+    [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
+    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int c);
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+    [DllImport("user32.dll")] public static extern int GetWindowLong(IntPtr h, int i);
+    [DllImport("user32.dll")] public static extern int SetWindowLong(IntPtr h, int i, int v);
+    [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr a, int x, int y, int w, int ht, uint f);
+    public delegate bool EnumWindowsProc(IntPtr h, IntPtr l);
+    [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
+}
+'@
+Add-Type -TypeDefinition $sig
+[W]::EnumWindows({param($h,$l)
+    $s=New-Object System.Text.StringBuilder 256
+    [W]::GetWindowText($h,$s,256)|Out-Null
+    if($s.ToString() -eq 'Koe'){
+        $r=New-Object W+RECT
+        [W]::GetWindowRect($h,[ref]$r)|Out-Null
+        if(($r.R-$r.L) -gt 400){
+            # Remove WS_MAXIMIZEBOX (0x10000) from window style
+            $style = [W]::GetWindowLong($h, -16)
+            [W]::SetWindowLong($h, -16, $style -band (-bnot 0x10000)) | Out-Null
+            # Refresh frame so the button disappears
+            [W]::SetWindowPos($h, [IntPtr]::Zero, 0,0,0,0, 0x0037) | Out-Null
+            [W]::ShowWindow($h,5)|Out-Null
+            [W]::SetForegroundWindow($h)|Out-Null
+        }
+    }
+    return $true
+},[IntPtr]::Zero)|Out-Null
+"""
+        try:
+            result = subprocess.run(
+                ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
+                timeout=8, capture_output=True, text=True,
+            )
+            logger.info("force_show_loop: subprocess done (rc=%s)", result.returncode)
+            if result.stderr:
+                logger.warning("force_show_loop stderr: %s", result.stderr[:200])
+        except Exception as exc:
+            logger.error("force_show_loop subprocess failed: %s", exc)
 
     def _on_closing(self, window: webview.Window):
         with self._lock:
@@ -302,6 +393,7 @@ class SettingsWindow:
             return None
 
         try:
+            self._is_hidden = True
             window.hide()
         except Exception:
             logger.exception("Failed to hide Koe window on close")
@@ -360,3 +452,87 @@ class SettingsWindow:
             self._window.resize(width, height)
         except Exception:
             logger.debug("Koe window geometry restore skipped", exc_info=True)
+
+    def _raise_to_front(self, hold_topmost_ms: int = 0):
+        """Schedule a foreground-raise on a background thread after the window settles."""
+        threading.Timer(0.35, self._do_raise_win32, args=(hold_topmost_ms,)).start()
+
+    def _do_raise_win32(self, hold_topmost_ms: int = 0):
+        """Win32 foreground-raise: restores, raises Z-order, and optionally holds topmost."""
+        try:
+            u32 = ctypes.windll.user32
+
+            # Find the main Koe window (large window, not the tray tooltip at -32000,-32000)
+            hwnd = self._find_main_hwnd(u32)
+            if not hwnd:
+                return
+
+            # SW_SHOWNORMAL (1) shows the window for the first time (or after hide)
+            # SW_RESTORE (9) un-minimizes if it was minimized — call both to cover all states
+            u32.ShowWindow(hwnd, 1)
+            u32.ShowWindow(hwnd, 9)
+
+            # ctypes.c_void_p(-1/-2) produces correct 64-bit handle values on x64;
+            # plain Python int -1 truncates to 32-bit 0xFFFFFFFF → error 1400.
+            _HWND_TOPMOST   = ctypes.c_void_p(-1)
+            _HWND_NOTOPMOST = ctypes.c_void_p(-2)
+            _SWP_NOMOVE     = 0x0002
+            _SWP_NOSIZE     = 0x0001
+            flags = _SWP_NOMOVE | _SWP_NOSIZE
+
+            u32.SetWindowPos(hwnd, _HWND_TOPMOST, 0, 0, 0, 0, flags)
+
+            # Stamp our custom ICO onto the window so the taskbar shows it
+            # instead of the generic python.exe icon.
+            try:
+                _LR_LOADFROMFILE = 0x0010
+                _LR_DEFAULTSIZE  = 0x0040
+                _IMAGE_ICON      = 1
+                icon_path_w = str(self._icon_path)
+                hicon = u32.LoadImageW(
+                    None, icon_path_w, _IMAGE_ICON, 0, 0,
+                    _LR_LOADFROMFILE | _LR_DEFAULTSIZE,
+                )
+                if hicon:
+                    _WM_SETICON = 0x0080
+                    u32.SendMessageW(hwnd, _WM_SETICON, 1, hicon)  # ICON_BIG
+                    u32.SendMessageW(hwnd, _WM_SETICON, 0, hicon)  # ICON_SMALL
+            except Exception:
+                pass
+
+            if hold_topmost_ms > 0:
+                # Stay on top long enough for the user to see it, then release
+                import time
+                time.sleep(hold_topmost_ms / 1000.0)
+
+            u32.SetWindowPos(hwnd, _HWND_NOTOPMOST, 0, 0, 0, 0, flags)
+            u32.SetForegroundWindow(hwnd)
+        except Exception:
+            logger.debug("Koe window raise skipped", exc_info=True)
+
+    @staticmethod
+    def _find_main_hwnd(u32) -> int:
+        """Return the HWND for the main Koe window (skips tray tooltip at -32000,-32000)."""
+        found = []
+
+        class _RECT(ctypes.Structure):
+            _fields_ = [("left", ctypes.c_long), ("top", ctypes.c_long),
+                        ("right", ctypes.c_long), ("bottom", ctypes.c_long)]
+
+        @ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_long)
+        def _cb(hwnd, _lparam):
+            buf = ctypes.create_unicode_buffer(64)
+            u32.GetWindowTextW(hwnd, buf, 64)
+            if buf.value == "Koe":
+                rect = _RECT()
+                u32.GetWindowRect(hwnd, ctypes.byref(rect))
+                w = rect.right - rect.left
+                h = rect.bottom - rect.top
+                # Main window is large; tray tooltip is tiny (160x28 at -32000,-32000)
+                if w > 400 and h > 400:
+                    found.append(hwnd)
+                    return False  # stop enumeration
+            return True
+
+        u32.EnumWindows(_cb, 0)
+        return found[0] if found else 0

@@ -1,6 +1,4 @@
-Set wmi = GetObject("winmgmts:\\.\root\cimv2")
-Set startup = wmi.Get("Win32_ProcessStartup").SpawnInstance_
-startup.ShowWindow = 1
-command = """C:\Users\gopin\Downloads\Koe\.venv\Scripts\pythonw.exe"" ""C:\Users\gopin\Downloads\Koe\run_koe.py"""
-workingDir = "C:\Users\gopin\Downloads\Koe"
-wmi.Get("Win32_Process").Create command, workingDir, startup, processId
+Dim shell
+Set shell = CreateObject("WScript.Shell")
+shell.CurrentDirectory = "C:\Users\gopin\Downloads\Koe"
+shell.Run """C:\Users\gopin\Downloads\Koe\.venv\Scripts\pythonw.exe"" ""C:\Users\gopin\Downloads\Koe\run_koe.py""", 0, False

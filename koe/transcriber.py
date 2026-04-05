@@ -15,6 +15,33 @@ from koe.config import TranscriptionConfig, MODELS_DIR
 
 logger = logging.getLogger(__name__)
 
+# Phrases Whisper commonly hallucinates on silence or near-silence recordings.
+# These are filtered out as false positives before returning to the caller.
+_HALLUCINATION_PHRASES: frozenset[str] = frozenset({
+    "thank you",
+    "thank you.",
+    "thank you!",
+    "thank you very much",
+    "thank you very much.",
+    "thank you very much!",
+    "thank you for watching",
+    "thank you for watching.",
+    "thanks for watching",
+    "thanks for watching.",
+    "thanks for watching!",
+    "please subscribe",
+    "please subscribe.",
+    "bye",
+    "bye.",
+    "bye bye",
+    "bye bye.",
+    "you",
+    "you.",
+    ".",
+    "...",
+    "…",
+})
+
 
 class Transcriber:
     """Whisper-based speech-to-text transcriber.
@@ -176,9 +203,20 @@ class Transcriber:
                 beam_size_override=max(6, beam_size + 1),
             )
             if retry and len(retry.strip()) > len(result.strip()):
-                return retry
+                return self._filter_hallucination(retry)
 
-        return result
+        return self._filter_hallucination(result)
+
+    @staticmethod
+    def _filter_hallucination(text: Optional[str]) -> Optional[str]:
+        """Return None if the text is a known Whisper hallucination phrase."""
+        if not text:
+            return None
+        normalized = text.strip().lower().rstrip(" .,!?")
+        if normalized in _HALLUCINATION_PHRASES or text.strip().lower() in _HALLUCINATION_PHRASES:
+            logger.warning("Filtered Whisper hallucination: %r", text)
+            return None
+        return text
 
     def _prepare_audio(self, audio: np.ndarray) -> np.ndarray:
         """Lightly normalize very quiet recordings without crushing dynamics."""

@@ -1,83 +1,95 @@
-"""Programmatic Koe app and tray icons."""
+"""Koe app and tray icons — uses the Koe_logo.png asset."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageTk
+from PIL import Image, ImageDraw
+
+_ASSETS = Path(__file__).resolve().parent / "assets"
+_LOGO_PATH = _ASSETS / "koe_logo.png"
+
+# Red recording-dot colour
+_REC_DOT = (220, 50, 50, 230)
 
 
-STATE_COLORS = {
-    "idle": ("#F1EFE9", "#CFCBC4"),
-    "recording": ("#FFFFFF", "#E8E4DD"),
-    "processing": ("#E8D6B9", "#D9B37A"),
-    "error": ("#C3B8B3", "#8C7F79"),
-}
-
-
-def create_icon(state: str = "idle", size: int = 32) -> Image.Image:
-    """Create a rounded Koe glyph icon for tray usage."""
-    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(img)
-
-    outer = [2, 2, size - 2, size - 2]
-    radius = max(6, size // 4)
-    draw.rounded_rectangle(outer, radius=radius, fill="#17171A")
-    draw.rounded_rectangle([3, 3, size - 3, size - 3], radius=max(5, radius - 2), outline="#303036", width=1)
-
-    base, inner = STATE_COLORS.get(state, STATE_COLORS["idle"])
-    inset = max(7, size // 4)
-    cx = size // 2
-    cy = size // 2
-    diamond = [
-        (cx, inset - 1),
-        (size - inset + 1, cy),
-        (cx, size - inset + 1),
-        (inset - 1, cy),
-    ]
-    draw.polygon(diamond, fill=base)
-
-    inner_inset = inset + max(4, size // 10)
-    inner_diamond = [
-        (cx, inner_inset),
-        (size - inner_inset, cy),
-        (cx, size - inner_inset),
-        (inner_inset, cy),
-    ]
-    draw.polygon(inner_diamond, fill=inner)
-    dot = max(4, size // 8)
-    draw.ellipse([cx - dot, cy - dot, cx + dot, cy + dot], fill="#FFFFFF")
+def _load_logo(size: int) -> Image.Image:
+    """Load the logo PNG and resize to *size* × *size* with high quality."""
+    img = Image.open(_LOGO_PATH).convert("RGBA")
+    img = img.resize((size, size), Image.LANCZOS)
     return img
 
 
-ICON_IDLE = create_icon("idle")
-ICON_RECORDING = create_icon("recording")
+def _add_recording_dot(img: Image.Image) -> Image.Image:
+    """Overlay a red dot in the top-right corner (recording indicator)."""
+    img = img.copy()
+    draw = ImageDraw.Draw(img)
+    size = img.width
+    s = size / 32.0
+    dot_r = max(2, round(3 * s))
+    dot_x = size - dot_r - max(1, round(1.5 * s))
+    dot_y = dot_r + max(1, round(1.5 * s))
+    draw.ellipse(
+        [dot_x - dot_r, dot_y - dot_r, dot_x + dot_r, dot_y + dot_r],
+        fill=_REC_DOT,
+    )
+    return img
+
+
+def _dim(img: Image.Image, alpha: int = 140) -> Image.Image:
+    """Return a dimmed copy of *img* (used for error / idle states)."""
+    img = img.copy()
+    r, g, b, a = img.split()
+    a = a.point(lambda v: int(v * alpha / 255))
+    return Image.merge("RGBA", (r, g, b, a))
+
+
+def create_icon(state: str = "idle", size: int = 32) -> Image.Image:
+    """Return a PIL RGBA icon for *state* at *size* × *size* pixels."""
+    base = _load_logo(size)
+    if state == "recording":
+        return _add_recording_dot(base)
+    if state == "processing":
+        return base   # full brightness while processing
+    if state == "error":
+        return _dim(base, 120)
+    return base   # idle
+
+
+# Pre-built instances (32 px — used for tray)
+ICON_IDLE       = create_icon("idle")
+ICON_RECORDING  = create_icon("recording")
 ICON_PROCESSING = create_icon("processing")
-ICON_ERROR = create_icon("error")
+ICON_ERROR      = create_icon("error")
 
 
 def get_icon(state: str) -> Image.Image:
     """Return the pre-generated tray icon for a state."""
-    icons = {
-        "idle": ICON_IDLE,
-        "recording": ICON_RECORDING,
+    return {
+        "idle":       ICON_IDLE,
+        "recording":  ICON_RECORDING,
         "processing": ICON_PROCESSING,
-        "error": ICON_ERROR,
-    }
-    return icons.get(state, ICON_IDLE)
+        "error":      ICON_ERROR,
+    }.get(state, ICON_IDLE)
 
 
 def get_app_icon(state: str = "idle", size: int = 64):
     """Return a Tk-compatible app icon image."""
+    from PIL import ImageTk
     return ImageTk.PhotoImage(create_icon(state, size=size))
 
 
 def ensure_icon_file() -> Path:
-    """Ensure a real ICO file exists for the desktop shell."""
-    asset_dir = Path(__file__).resolve().parent / "assets"
-    asset_dir.mkdir(parents=True, exist_ok=True)
-    icon_path = asset_dir / "koe.ico"
-    if not icon_path.exists():
-        image = create_icon("idle", size=256)
-        image.save(icon_path, format="ICO", sizes=[(256, 256), (128, 128), (64, 64), (32, 32), (16, 16)])
+    """Ensure a fresh ICO file exists for the desktop shell (always regenerated)."""
+    icon_path = _ASSETS / "koe.ico"
+
+    # Build multi-size ICO from the logo PNG (always regenerated so updates take effect).
+    sizes = [256, 128, 64, 32, 16]
+    images = [_load_logo(s) for s in sizes]
+    images[0].save(
+        icon_path,
+        format="ICO",
+        sizes=[(s, s) for s in sizes],
+        append_images=images[1:],
+    )
     return icon_path

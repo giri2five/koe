@@ -154,6 +154,19 @@ class KoeApp:
             return
 
         try:
+            # Hard silence gate: if audio energy is basically nothing, skip transcription
+            # entirely to prevent Whisper hallucinations ("thank you very much", etc.)
+            rms = float(np.sqrt(np.mean(np.square(audio), dtype=np.float64)))
+            if rms < 0.006:
+                logger.info("Audio RMS %.5f below silence gate — skipping transcription", rms)
+                self._last_transcript = ""
+                self._last_cleaned = ""
+                self._last_delivery = "No speech heard"
+                self._set_status("No speech heard")
+                self._safe_set_overlay_state(OverlayState.HIDDEN)
+                self._update_tray_icon("idle")
+                return
+
             self._set_status("Processing")
             self._safe_set_overlay_state(OverlayState.PROCESSING)
             self._update_tray_icon("processing")

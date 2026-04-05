@@ -9,6 +9,7 @@ build/
 *.whl
 *.log
 *.png
+!koe/assets/koe_logo.png
 *.wav
 *.txt
 
