@@ -461,17 +461,19 @@ class KoeApp:
         import keyboard as _kb
 
         try:
-            # Wait for Ctrl and Shift to be physically released before
+            # Wait for ALL modifier keys to be physically released before
             # sending Ctrl+C.  We NEVER send synthetic key-up events —
             # fake releases corrupt the OS keyboard state for other apps.
+            _VK_ALT   = 0x12   # VK_MENU    — either side
             _VK_CTRL  = 0x11   # VK_CONTROL — either side
             _VK_SHIFT = 0x10   # VK_SHIFT   — either side
 
-            deadline = time.monotonic() + 1.0
+            deadline = time.monotonic() + 1.5
             while time.monotonic() < deadline:
+                alt_held   = bool(_ct.windll.user32.GetAsyncKeyState(_VK_ALT)   & 0x8000)
                 ctrl_held  = bool(_ct.windll.user32.GetAsyncKeyState(_VK_CTRL)  & 0x8000)
                 shift_held = bool(_ct.windll.user32.GetAsyncKeyState(_VK_SHIFT) & 0x8000)
-                if not ctrl_held and not shift_held:
+                if not alt_held and not ctrl_held and not shift_held:
                     break
                 time.sleep(0.02)
             time.sleep(0.03)   # small extra settle before Ctrl+C
