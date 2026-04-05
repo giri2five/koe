@@ -178,38 +178,58 @@ class TextCleaner:
 
     @staticmethod
     def _format_structured_speech(text: str) -> str:
-        """Shape obvious numbered speech and step-like dictation into readable lines."""
+        """Format as a list ONLY when the user is clearly enumerating distinct items.
+
+        Rules to avoid false positives:
+        - Numbered: numbers must be 1-2-3 in strict sequence, each item ≥ 5 words,
+          ≥ 3 items, and list content covers > 55 % of the text.
+        - Ordinal (first/second/third…): needs ≥ 3 markers, each item ≥ 6 words.
+        - "then/next/finally" alone are NOT enough — too common in normal speech.
+        """
         if not text:
             return text
 
         normalized = re.sub(r"\s+", " ", text).strip()
 
-        numbered = re.findall(r"(\d+)[\).\:-]?\s+([^0-9]+?)(?=(?:\s+\d+[\).\:-]?\s)|$)", normalized)
-        if len(numbered) >= 2:
-            lines = [f"{index}. {item.strip(' ,.;')}" for index, item in numbered]
-            return "\n".join(lines)
+        # ── Explicit sequential numbered list ─────────────────────────────
+        # e.g. "1 install the package 2 configure the settings 3 restart"
+        # Requires strict 1-2-3... sequence, ≥ 3 items, each item ≥ 5 words.
+        num_hits = re.findall(
+            r"(?<!\d)([1-9])[.):]?\s+([A-Za-z][^0-9]{15,}?)(?=\s*[1-9][.):]?\s+[A-Za-z]|$)",
+            normalized,
+        )
+        if len(num_hits) >= 3:
+            nums = [int(n) for n, _ in num_hits]
+            items = [item.strip(" ,.;") for _, item in num_hits]
+            if (nums == list(range(1, len(nums) + 1))
+                    and all(len(i.split()) >= 5 for i in items)
+                    and sum(len(i) for i in items) / max(len(normalized), 1) > 0.55):
+                return "\n".join(f"{n}. {i}" for n, i in zip(nums, items))
 
-        step_markers = re.split(
-            r"\b(?:first|second|third|fourth|fifth|then|next|after that|finally|lastly)\b[:,]?\s*",
-            normalized,
-            flags=re.IGNORECASE,
+        # ── Ordinal-word list (first / second / third …) ──────────────────
+        # e.g. "first install it, second configure it, third restart the server"
+        # Requires ≥ 3 ordinals (NOT "then/next"), each item ≥ 6 words.
+        _ORDINALS = (
+            r"first|second|third|fourth|fifth|"
+            r"sixth|seventh|eighth|ninth|tenth"
         )
-        marker_hits = re.findall(
-            r"\b(?:first|second|third|fourth|fifth|then|next|after that|finally|lastly)\b[:,]?\s*",
-            normalized,
-            flags=re.IGNORECASE,
+        ordinal_hits = re.findall(
+            rf"\b(?:{_ORDINALS})\b(?:\s+of\s+all)?[,:]?\s*",
+            normalized, re.IGNORECASE,
         )
-        if len(marker_hits) >= 2:
-            items = [segment.strip(" ,.;") for segment in step_markers if segment.strip(" ,.;")]
-            if len(items) >= 2:
+        if len(ordinal_hits) >= 3:
+            parts = re.split(
+                rf"\b(?:{_ORDINALS})\b(?:\s+of\s+all)?[,:]?\s*",
+                normalized, flags=re.IGNORECASE,
+            )
+            items = [p.strip(" ,.;") for p in parts if len(p.strip(" ,.;").split()) >= 6]
+            if len(items) >= 3:
                 formatted = []
-                for idx, item in enumerate(items, start=1):
-                    if item and item[0].islower():
-                        item = item[0].upper() + item[1:]
-                    formatted.append(f"{idx}. {item}")
+                for idx, item in enumerate(items, 1):
+                    formatted.append(f"{idx}. {item[:1].upper() + item[1:]}")
                 return "\n".join(formatted)
 
-        return text
+        return normalized
 
     def _clean_with_llm(self, text: str) -> str:
         """LLM-based cleanup using a small local model.
