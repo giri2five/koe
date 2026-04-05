@@ -11,7 +11,6 @@ let appState = {
   outputMode: "both",
   showOverlay: true,
   soundFeedback: true,
-  clipboardToggle: "",
   cleanupMode: "rules",
   cleanupEnabled: true,
   lastTranscript: "",
@@ -33,7 +32,6 @@ const micValue     = document.getElementById("mic-value");
 const outputValue  = document.getElementById("output-value");
 const overlaySwitch = document.getElementById("overlay-switch");
 const soundSwitch  = document.getElementById("sound-switch");
-const clipboardToggleValue = document.getElementById("clipboard-toggle-value");
 const cleanupModeSwitch = document.getElementById("cleanup-mode-switch");
 const modelValue   = document.getElementById("model-value");
 const snippetCount = document.getElementById("snippet-count");
@@ -80,9 +78,6 @@ function applyState(incoming) {
   overlaySwitch.classList.toggle("on", Boolean(appState.showOverlay));
   soundSwitch.classList.toggle("on",   Boolean(appState.soundFeedback));
 
-  clipboardToggleValue.textContent = appState.clipboardToggle
-    ? appState.clipboardToggle.toUpperCase().replace(/\+/g, " + ")
-    : "Disabled";
   cleanupModeSwitch.classList.toggle("on", appState.cleanupMode === "llm");
 
   const cleaned = appState.lastCleaned || "";
@@ -205,20 +200,6 @@ document.getElementById("overlay-toggle").addEventListener("click", async () => 
 document.getElementById("sound-toggle").addEventListener("click", async () => {
   if (!hasApi()) return;
   applyState(await window.pywebview.api.set_sound_enabled(!appState.soundFeedback));
-});
-
-const CLIPBOARD_TOGGLE_OPTIONS = [
-  { value: "", label: "Disabled" },
-  { value: "ctrl+shift+space", label: "Ctrl + Shift + Space" },
-  { value: "ctrl+shift+v", label: "Ctrl + Shift + V" },
-  { value: "ctrl+alt+space", label: "Ctrl + Alt + Space" },
-];
-
-document.getElementById("clipboard-toggle-setting").addEventListener("click", () => {
-  openSheet("Clipboard toggle hotkey", CLIPBOARD_TOGGLE_OPTIONS, appState.clipboardToggle || "", async val => {
-    if (!hasApi()) return;
-    applyState(await window.pywebview.api.set_clipboard_toggle(val));
-  });
 });
 
 document.getElementById("cleanup-mode-toggle").addEventListener("click", async () => {

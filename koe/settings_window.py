@@ -72,10 +72,6 @@ class _SettingsBridge:
         """Copy arbitrary text to clipboard (used by history entries)."""
         return self._owner.copy_text(text)
 
-    def set_clipboard_toggle(self, value: str) -> dict:
-        """Set the clipboard toggle hotkey."""
-        return self._owner.set_clipboard_toggle(value)
-
     def set_cleanup_mode(self, value: str) -> dict:
         """Set the cleanup mode (rules or llm)."""
         return self._owner.set_cleanup_mode(value)
@@ -281,7 +277,6 @@ class SettingsWindow:
             "outputOptions": output_options,
             "showOverlay": config.ui.show_overlay,
             "soundFeedback": config.ui.sound_feedback,
-            "clipboardToggle": config.hotkey.clipboard_toggle or "",
             "cleanupMode": config.cleanup.mode,
             "cleanupEnabled": config.cleanup.enabled,
             "lastTranscript": str(runtime.get("lastTranscript", "")),
@@ -314,12 +309,6 @@ class SettingsWindow:
     def set_sound_enabled(self, enabled: bool) -> dict:
         """Persist the sound feedback flag."""
         self._mutate_config(lambda config: setattr(config.ui, "sound_feedback", bool(enabled)))
-        return self.get_state()
-
-    def set_clipboard_toggle(self, value: str) -> dict:
-        """Persist the clipboard toggle hotkey."""
-        hotkey = value.strip().lower()
-        self._mutate_config(lambda config: setattr(config.hotkey, "clipboard_toggle", hotkey))
         return self.get_state()
 
     def set_cleanup_mode(self, value: str) -> dict:
