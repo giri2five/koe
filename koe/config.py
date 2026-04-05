@@ -25,7 +25,7 @@ MODELS_DIR = KOE_DIR / "models"
 class HotkeyConfig:
     trigger: str = "alt+k"
     clipboard_toggle: str = ""
-    expand_snippet: str = "ctrl+shift+k"
+    expand_snippet: str = "alt+j"
 
 
 @dataclass
