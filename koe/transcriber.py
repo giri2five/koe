@@ -299,6 +299,83 @@ class Transcriber:
             return min(configured, 3)
         return configured
 
+    @staticmethod
+    def _probe_duration(path: str) -> float:
+        """Return audio duration via ffprobe, or 0.0 on failure."""
+        import subprocess, json
+        try:
+            r = subprocess.run(
+                ["ffprobe", "-v", "quiet", "-print_format", "json",
+                 "-show_format", path],
+                capture_output=True, text=True, timeout=10,
+            )
+            return float(json.loads(r.stdout).get("format", {}).get("duration", 0) or 0)
+        except Exception:
+            return 0.0
+
+    @staticmethod
+    def _normalize_audio_file(path: str) -> tuple[str, bool]:
+        """
+        Convert audio to a standard WAV that faster-whisper can always decode.
+
+        faster-whisper's bundled ffmpeg struggles with raw ADTS AAC files
+        (Twitter/X Spaces, some phone recordings) — it reads duration=0.0
+        and transcribes nothing.  Run a quick probe first; if duration comes
+        back 0 we re-encode to 16 kHz mono WAV via system ffmpeg.
+
+        Returns (path_to_use, was_converted).
+        """
+        import subprocess, tempfile, os
+        try:
+            r = subprocess.run(
+                ["ffprobe", "-v", "quiet", "-print_format", "json",
+                 "-show_streams", path],
+                capture_output=True, text=True, timeout=10,
+            )
+            import json
+            streams = json.loads(r.stdout).get("streams", [])
+            has_audio = any(s.get("codec_type") == "audio" for s in streams)
+            if not has_audio:
+                return path, False
+
+            # Check if faster-whisper can read it natively (duration > 0)
+            r2 = subprocess.run(
+                ["ffprobe", "-v", "quiet", "-print_format", "json",
+                 "-show_format", path],
+                capture_output=True, text=True, timeout=10,
+            )
+            duration = float(json.loads(r2.stdout).get("format", {}).get("duration", 0) or 0)
+
+            # If ffprobe sees audio but faster-whisper will get duration=0, convert
+            codec = next(
+                (s.get("codec_name", "") for s in streams if s.get("codec_type") == "audio"), ""
+            )
+            # Raw ADTS AAC containers (probe_score < 60) need re-mux
+            probe_score = int(json.loads(r2.stdout).get("format", {}).get("probe_score", 100) or 100)
+            needs_convert = (duration == 0.0 or probe_score < 60 or codec == "aac" and duration > 0
+                             and path.lower().endswith(".mp3"))
+
+            if not needs_convert:
+                return path, False
+
+            tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+            tmp.close()
+            logger.info("Re-encoding %s → %s (codec=%s probe_score=%d)", path, tmp.name, codec, probe_score)
+            result = subprocess.run(
+                ["ffmpeg", "-y", "-i", path,
+                 "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le",
+                 tmp.name],
+                capture_output=True, timeout=300,
+            )
+            if result.returncode != 0 or not os.path.exists(tmp.name):
+                logger.warning("ffmpeg re-encode failed: %s", result.stderr[-300:])
+                return path, False
+            return tmp.name, True
+
+        except Exception as exc:
+            logger.warning("Audio normalize failed: %s", exc)
+            return path, False
+
     def transcribe_file_stream(
         self,
         path: str,
@@ -306,17 +383,21 @@ class Transcriber:
     ) -> str:
         """Transcribe an audio file, calling on_segment as each segment is ready.
 
-        Uses beam_size=1 for maximum speed on file mode. Streams partial results
-        so the UI can update in real-time rather than waiting for the full file.
+        Streams partial results so the UI can update in real-time.
+        Auto-converts problematic formats (raw ADTS AAC, etc.) via ffmpeg.
 
         Returns the final full transcript.
         """
+        import os as _os
         self._ensure_model()
         language = self.config.language if self.config.language != "auto" else None
 
+        # Normalise file format if needed (e.g. raw AAC disguised as .mp3)
+        actual_path, was_converted = self._normalize_audio_file(path)
+
         def _run_transcribe(vad: bool) -> tuple[list[str], float]:
             segs_iter, inf = self._model.transcribe(
-                path,
+                actual_path,
                 language=language,
                 beam_size=2,
                 vad_filter=vad,
@@ -363,6 +444,14 @@ class Transcriber:
             "File transcription complete: source=%.1fs, chars=%d",
             duration, len(final),
         )
+
+        # Clean up temp file if we converted
+        if was_converted:
+            try:
+                _os.unlink(actual_path)
+            except Exception:
+                pass
+
         return final
 
     def unload(self):
