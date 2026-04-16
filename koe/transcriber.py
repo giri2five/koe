@@ -314,37 +314,54 @@ class Transcriber:
         self._ensure_model()
         language = self.config.language if self.config.language != "auto" else None
 
-        segments_iter, info = self._model.transcribe(
-            path,
-            language=language,
-            beam_size=1,            # fastest for file mode; minimal accuracy trade-off
-            vad_filter=True,
-            word_timestamps=False,
-            condition_on_previous_text=True,
-            initial_prompt=(
-                "Transcribe the audio accurately. "
-                "Use natural punctuation. Preserve names and proper nouns carefully."
-            ),
-        )
+        def _run_transcribe(vad: bool) -> tuple[list[str], float]:
+            segs_iter, inf = self._model.transcribe(
+                path,
+                language=language,
+                beam_size=2,
+                vad_filter=vad,
+                vad_parameters=dict(
+                    threshold=0.25,             # permissive — catches quiet/Space audio
+                    min_silence_duration_ms=600,
+                    speech_pad_ms=500,
+                ) if vad else {},
+                word_timestamps=False,
+                condition_on_previous_text=True,
+                initial_prompt=(
+                    "Transcribe the audio accurately. "
+                    "Use natural punctuation. Preserve names and proper nouns carefully."
+                ),
+            )
+            collected: list[str] = []
+            total = max(inf.duration, 1.0)
+            for seg in segs_iter:
+                piece = seg.text.strip()
+                if piece:
+                    collected.append(piece)
+                partial  = " ".join(collected)
+                progress = min(seg.end / total, 0.99)
+                try:
+                    on_segment(partial, progress)
+                except Exception:
+                    pass
+            return collected, inf.duration
 
-        texts: list[str] = []
-        total_duration = max(info.duration, 1.0)
+        # First pass with permissive VAD
+        texts, duration = _run_transcribe(vad=True)
 
-        for seg in segments_iter:
-            piece = seg.text.strip()
-            if piece:
-                texts.append(piece)
-            partial  = " ".join(texts)
-            progress = min(seg.end / total_duration, 0.99)
+        # If VAD found nothing, retry without it (handles quiet/Space recordings)
+        if not texts:
+            logger.info("VAD found no speech — retrying without VAD filter")
             try:
-                on_segment(partial, progress)
+                on_segment("", 0.0)   # reset UI progress
             except Exception:
                 pass
+            texts, duration = _run_transcribe(vad=False)
 
         final = " ".join(texts).strip()
         logger.info(
             "File transcription complete: source=%.1fs, chars=%d",
-            info.duration, len(final),
+            duration, len(final),
         )
         return final
 
